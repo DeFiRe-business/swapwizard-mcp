@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://swapwizard.xyz">
+    <img src="https://swapwizard.xyz/brand/logo.png" alt="SwapWizard" width="200" />
+  </a>
+</p>
+
 # SwapWizard MCP Server
 
 Model Context Protocol (MCP) server for the [SwapWizard](https://swapwizard.xyz) DeFi API. Enables AI agents to get swap quotes, manage liquidity, and discover pools across multiple EVM chains.
