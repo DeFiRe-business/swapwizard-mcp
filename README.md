@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://swapwizard.xyz">
-    <img src="https://swapwizard.xyz/brand/logo.png" alt="SwapWizard" width="200" />
+    <img src="./logo.png" alt="SwapWizard" width="200" />
   </a>
 </p>
 
