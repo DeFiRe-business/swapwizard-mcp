@@ -1,0 +1,43 @@
+{
+  "name": "@swapwizard/mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server for the SwapWizard DeFi API — swap quotes, liquidity management, and pool discovery for AI agents.",
+  "type": "module",
+  "bin": {
+    "swapwizard-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "swapwizard",
+    "defi",
+    "dex-aggregator",
+    "swap",
+    "liquidity",
+    "ai-agent"
+  ],
+  "author": "SwapWizard <contact@swapwizard.xyz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DeFiRe-business/swapwizard-mcp.git"
+  },
+  "homepage": "https://swapwizard.xyz",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3"
+  }
+}
