@@ -188,6 +188,23 @@ Quote a remove-liquidity operation.
 3. Compare prices across pools to decide the optimal move
 4. Execute remove → swap → add in sequence
 
+## Affiliate Whitelabel
+
+Want to deploy a full branded frontend for your users? Use the [SwapWizard Affiliate Whitelabel](https://github.com/DeFiRe-business/swapwizard-affiliate-whitelabel) — a standalone Next.js app that affiliates clone, configure via `.env`, and deploy under their own brand.
+
+- Automatic `affiliateCode` injection on every quote and liquidity operation
+- Server-side API key proxy (key never exposed to the browser)
+- Customizable branding: app name, colors, logo, chains
+- Includes complete AI agent integration docs with step-by-step workflows for swap, add/remove liquidity, and strategic rebalancing with `excludePositions`
+
+```bash
+git clone https://github.com/DeFiRe-business/swapwizard-affiliate-whitelabel.git
+cd swapwizard-affiliate-whitelabel
+cp .env.example .env.local
+# Edit .env.local with your API key, affiliate address, and branding
+npm install && npm run dev
+```
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
