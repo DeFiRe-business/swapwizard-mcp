@@ -3,6 +3,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { pathToFileURL } from "url";
 
 const API_URL = (process.env.SWAPWIZARD_API_URL ?? "https://swapwizard.xyz").replace(/\/$/, "");
 const API_KEY = process.env.SWAPWIZARD_API_KEY ?? "";
@@ -44,6 +48,72 @@ async function apiPost(path: string, body: unknown): Promise<unknown> {
     throw new Error(`API ${res.status}: ${text}`);
   }
   return res.json();
+}
+
+// ── Positions library (client-side, loaded dynamically) ─────────────────────
+
+let positionsLib: any = null;
+let chainsCache: any[] | null = null;
+let chainsCacheTime = 0;
+
+async function loadPositionsLib(): Promise<any> {
+  if (positionsLib) return positionsLib;
+  const bundleUrl = `${API_URL}/lib/user-positions.mjs`;
+  const res = await fetch(bundleUrl);
+  if (!res.ok) throw new Error(`Failed to download positions library: ${res.status}`);
+  const code = await res.text();
+  const tmpPath = join(tmpdir(), `swapwizard-user-positions-${Date.now()}.mjs`);
+  writeFileSync(tmpPath, code, "utf-8");
+  positionsLib = await import(pathToFileURL(tmpPath).href);
+  return positionsLib;
+}
+
+async function getChainsConfig(): Promise<any[]> {
+  const now = Date.now();
+  if (chainsCache && now - chainsCacheTime < 300_000) return chainsCache;
+  const data = await apiGet("/chains") as any[];
+  chainsCache = data;
+  chainsCacheTime = now;
+  return data;
+}
+
+async function fetchPositionPools(chainId: number): Promise<any[]> {
+  const url = new URL("/api/position-pools", API_URL);
+  url.searchParams.set("chainId", String(chainId));
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`position-pools ${res.status}: ${body}`);
+  }
+  const data = await res.json() as { pools: any[] };
+  return data.pools;
+}
+
+function buildPositionConfig(chain: any, publicRpcs: Record<number, string[]>): any {
+  const pc = chain.positionConfig;
+  return {
+    chainId: chain.chainId,
+    rpcUrls: publicRpcs[chain.chainId] ?? [],
+    weth: chain.weth,
+    v3NftManagers: pc?.v3NftManagers?.map((m: any) => ({
+      address: m.address,
+      dexName: m.dexName,
+      dexKind: m.dexKind,
+      ...(m.factory ? { factory: m.factory } : {}),
+    })) ?? [],
+    ...(pc?.algebraNftManager ? { algebraNftManager: pc.algebraNftManager } : {}),
+    ...(pc?.algebraFactory ? { algebraFactory: pc.algebraFactory } : {}),
+    ...(pc?.algebraDexName ? { algebraDexName: pc.algebraDexName } : {}),
+    ...(pc?.v4PositionManager ? { v4PositionManager: pc.v4PositionManager } : {}),
+    ...(pc?.v4StateView ? { v4StateView: pc.v4StateView } : {}),
+    ...(pc?.balancerV2Vault ? { balancerV2Vault: pc.balancerV2Vault } : {}),
+    ...(pc?.pcsInfinityCLPositionManager ? { pcsInfinityCLPositionManager: pc.pcsInfinityCLPositionManager } : {}),
+    ...(pc?.v4ClPoolManager ? { v4ClPoolManager: pc.v4ClPoolManager } : {}),
+    ...(pc?.pcsInfinityBinPositionManager ? { pcsInfinityBinPositionManager: pc.pcsInfinityBinPositionManager } : {}),
+    ...(pc?.pcsInfinityBinPoolManager ? { pcsInfinityBinPoolManager: pc.pcsInfinityBinPoolManager } : {}),
+    ...(pc?.aerodromeSugar ? { aerodromeSugar: pc.aerodromeSugar } : {}),
+    ...(pc?.thenaPairApi ? { thenaPairApi: pc.thenaPairApi } : {}),
+  };
 }
 
 const server = new McpServer({
@@ -104,7 +174,15 @@ server.tool(
     owner: z.string().describe("Wallet address to query positions for"),
   },
   async ({ chainId, owner }) => {
-    const data = await apiGet("/positions", { chainId: String(chainId), owner });
+    const [lib, chains, pools] = await Promise.all([
+      loadPositionsLib(),
+      getChainsConfig(),
+      fetchPositionPools(chainId),
+    ]);
+    const chain = chains.find((c: any) => c.chainId === chainId);
+    if (!chain) throw new Error(`Chain ${chainId} not supported`);
+    const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
+    const data = await lib.readAllPositions(owner, config, pools);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
   },
 );
