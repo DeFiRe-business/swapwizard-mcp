@@ -5,16 +5,25 @@
   "mcpName": "io.github.defire-business/swapwizard-mcp",
   "type": "module",
   "bin": {
-    "swapwizard-mcp": "dist/index.js"
+    "swapwizard-mcp": "dist/index.js",
+    "swapwizard-mcp-http": "dist/http-server.js"
   },
   "main": "./dist/index.js",
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
+    "dist/http-server.js",
+    "dist/http-server.js.map",
+    "dist/http-server.d.ts",
+    "dist/http-server.d.ts.map"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "start:http": "MCP_HTTP=1 node dist/http-server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -37,9 +46,11 @@
   },
   "homepage": "https://swapwizard.xyz",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1"
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^25.6.2",
     "tsx": "^4.19.4",
     "typescript": "^5.7.3",
