@@ -126,11 +126,30 @@ function extractProtocols(chain: any): string[] {
   return protocols;
 }
 
+// ── Tool response helpers ─────────────────────────────────────────────────
+
+function jsonResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+async function safeApiCall(fn: () => Promise<unknown>) {
+  try {
+    const data = await fn();
+    return jsonResult(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }],
+      isError: true as const,
+    };
+  }
+}
+
 // ── Server factory ─────────────────────────────────────────────────────────
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.2",
+  version: "1.1.3",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -157,20 +176,14 @@ function createServer(apiKey: string): McpServer {
     "get_supported_chains",
     `Maps to GET /chains. Lists supported EVM chains with chain IDs and native gas tokens: Ethereum, Arbitrum, Base, Polygon, BNB Chain.`,
     {},
-    async () => {
-      const data = await apiGet("/chains");
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    async () => safeApiCall(() => apiGet("/chains")),
   );
 
   server.tool(
     "check_api_health",
     `Maps to GET /health. Returns service availability. Use to confirm the API is responsive before attempting operations.`,
     {},
-    async () => {
-      const data = await apiGet("/health");
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    async () => safeApiCall(() => apiGet("/health")),
   );
 
   server.tool(
@@ -179,7 +192,7 @@ function createServer(apiKey: string): McpServer {
     {
       chainId: z.number().int().optional().describe("EVM chain ID to filter results. If omitted, returns protocols for all supported chains."),
     },
-    async ({ chainId }) => {
+    async ({ chainId }) => safeApiCall(async () => {
       const chains = await getChainsConfig();
       const filtered = chainId != null
         ? chains.filter((c: any) => c.chainId === chainId)
@@ -195,8 +208,8 @@ function createServer(apiKey: string): McpServer {
         protocols: extractProtocols(chain),
       }));
 
-      return { content: [{ type: "text", text: JSON.stringify({ chains: result }, null, 2) }] };
-    },
+      return { chains: result };
+    }),
   );
 
   server.tool(
@@ -211,8 +224,7 @@ function createServer(apiKey: string): McpServer {
       const params: Record<string, string> = { chainId: String(chainId) };
       if (tokens) params.tokens = tokens;
       if (poolType) params.poolType = poolType;
-      const data = await apiGet("/pools", params);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      return safeApiCall(() => apiGet("/pools", params));
     },
   );
 
@@ -223,7 +235,7 @@ function createServer(apiKey: string): McpServer {
       chainId: z.number().int().describe("EVM chain ID"),
       owner: z.string().describe("Wallet address to query positions for"),
     },
-    async ({ chainId, owner }) => {
+    async ({ chainId, owner }) => safeApiCall(async () => {
       const [lib, chains, pools] = await Promise.all([
         loadPositionsLib(),
         getChainsConfig(),
@@ -232,9 +244,8 @@ function createServer(apiKey: string): McpServer {
       const chain = chains.find((c: any) => c.chainId === chainId);
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
       const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-      const data = await lib.readAllPositions(owner, config, pools);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+      return lib.readAllPositions(owner, config, pools);
+    }),
   );
 
   server.tool(
@@ -255,10 +266,7 @@ function createServer(apiKey: string): McpServer {
         tickUpper: z.number().int().describe("Upper tick bound"),
       })).optional().describe("Positions to subtract from pool state during simulation — for a clean quote that excludes self-impact. Get these from list_user_lp_positions."),
     },
-    async (params) => {
-      const data = await apiPost("/quote", params);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    async (params) => safeApiCall(() => apiPost("/quote", params)),
   );
 
   server.tool(
@@ -274,7 +282,7 @@ function createServer(apiKey: string): McpServer {
       slippageBps: z.number().int().min(0).max(10000).optional().describe("Slippage tolerance in basis points (default: 100 = 1%)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode }) => {
+    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode }) => safeApiCall(async () => {
       const [lib, chains, pools] = await Promise.all([
         loadPositionsLib(),
         getChainsConfig(),
@@ -315,9 +323,8 @@ function createServer(apiKey: string): McpServer {
       if (affiliateCode) quoteParams.affiliateCode = affiliateCode;
       if (excludePositions) quoteParams.excludePositions = excludePositions;
 
-      const data = await apiPost("/quote", quoteParams);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+      return apiPost("/quote", quoteParams);
+    }),
   );
 
   server.tool(
@@ -335,10 +342,7 @@ function createServer(apiKey: string): McpServer {
       tickUpper: z.number().int().optional().describe("Custom upper tick for concentrated liquidity"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async (params) => {
-      const data = await apiPost("/addliquidity/quote", params);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+    async (params) => safeApiCall(() => apiPost("/addliquidity/quote", params)),
   );
 
   server.tool(
@@ -358,7 +362,7 @@ function createServer(apiKey: string): McpServer {
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => {
+    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
       if (!dexName && poolId) {
         const colonIdx = poolId.indexOf(":");
         if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
@@ -394,9 +398,8 @@ function createServer(apiKey: string): McpServer {
       if (percent) payload.percent = percent;
       if (affiliateCode) payload.affiliateCode = affiliateCode;
 
-      const data = await apiPost("/removeliquidity/quote", payload);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
+      return apiPost("/removeliquidity/quote", payload);
+    }),
   );
 
   return server;
