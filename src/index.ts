@@ -130,7 +130,7 @@ function extractProtocols(chain: any): string[] {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.1",
+  version: "1.1.2",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -201,7 +201,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning the poolId and pool metadata (pair, fee tier, protocol) an agent needs to target a position. Does NOT return APR, TVL, or volume — use poolId and on-chain data for valuation. Required upstream step before zap_into_lp_position.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning poolId, symbol, fee tier, protocol, APY, TVL (USD), and 24h volume (USD). Required upstream step before zap_into_lp_position.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       tokens: z.string().optional().describe("Comma-separated token addresses to filter pools by"),
