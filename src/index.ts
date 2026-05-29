@@ -130,7 +130,7 @@ function extractProtocols(chain: any): string[] {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.0",
+  version: "1.1.1",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -201,7 +201,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning the poolId and pool metadata (pair, fee tier, TVL, volume) an agent needs to target a position. Required upstream step before zap_into_lp_position.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning the poolId and pool metadata (pair, fee tier, protocol) an agent needs to target a position. Does NOT return APR, TVL, or volume — use poolId and on-chain data for valuation. Required upstream step before zap_into_lp_position.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       tokens: z.string().optional().describe("Comma-separated token addresses to filter pools by"),
@@ -343,19 +343,58 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "zap_out_of_lp_position",
-    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. To rebalance or migrate, chain zap_out_of_lp_position then zap_into_lp_position via multicall; there is no separate migration endpoint. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
+    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. For concentrated liquidity (V3) positions, nftManager is required — get it from list_user_lp_positions. If poolId is provided (e.g. 'pancakeswap-v3:0x...'), the tool auto-detects dexName and nftManager from chain config. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
-      poolId: z.string().describe("Pool identifier from search_liquidity_pools"),
-      tokenId: z.string().optional().describe("NFT token ID for concentrated liquidity positions"),
+      positionId: z.string().describe("NFT token ID (for concentrated liquidity) or LP token address (for classic pools)"),
+      poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...'). Used to auto-detect dexName and nftManager."),
+      nftManager: z.string().optional().describe("NFT position manager contract address. Required for concentrated liquidity positions. Get from list_user_lp_positions or auto-detected from poolId."),
+      dexName: z.string().optional().describe("DEX project name (e.g. 'pancakeswap-v3', 'uniswap-v3'). Auto-detected from poolId prefix if not provided."),
+      liquidityKind: z.string().optional().describe("Liquidity kind override: UNIV3, UNIV4, ALGEBRA, SLIPSTREAM, PCS_INF_CL, PCS_INF_BIN, CURVE, BAL_V2, BAL_V3, UNIV2, SOLIDLY"),
       withdrawals: z.array(z.object({
         token: z.string().describe("Token address to withdraw to"),
-      })).optional().describe("Tokens to receive after removal"),
+      })).min(1).describe("Tokens to receive after removal"),
       sender: z.string().optional().describe("Wallet address of the position owner"),
+      percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async (params) => {
-      const data = await apiPost("/removeliquidity/quote", params);
+    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => {
+      if (!dexName && poolId) {
+        const colonIdx = poolId.indexOf(":");
+        if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
+      }
+
+      if (!nftManager && dexName) {
+        const chains = await getChainsConfig();
+        const chain = chains.find((c: any) => c.chainId === chainId);
+        if (chain?.positionConfig?.v3NftManagers) {
+          const PROJECT_TO_DEX: Record<string, string> = {
+            "uniswap-v3": "Uniswap V3",
+            "sushiswap-v3": "SushiSwap V3",
+            "pancakeswap-amm-v3": "PancakeSwap V3",
+            "pancakeswap-v3": "PancakeSwap V3",
+            "aerodrome-slipstream": "Aerodrome Slipstream",
+            "camelot-v3": "Camelot",
+            "thena-fusion": "THENA",
+            "quickswap-v3": "QuickSwap",
+          };
+          const displayName = PROJECT_TO_DEX[dexName] ?? dexName;
+          const manager = chain.positionConfig.v3NftManagers.find(
+            (m: any) => m.dexName === displayName || m.dexName === dexName,
+          );
+          if (manager) nftManager = manager.address;
+        }
+      }
+
+      const payload: Record<string, unknown> = { chainId, positionId, withdrawals };
+      if (nftManager) payload.nftManager = nftManager;
+      if (dexName) payload.dexName = dexName;
+      if (liquidityKind) payload.liquidityKind = liquidityKind;
+      if (sender) payload.sender = sender;
+      if (percent) payload.percent = percent;
+      if (affiliateCode) payload.affiliateCode = affiliateCode;
+
+      const data = await apiPost("/removeliquidity/quote", payload);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
