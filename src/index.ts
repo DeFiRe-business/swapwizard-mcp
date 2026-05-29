@@ -350,7 +350,8 @@ function createServer(apiKey: string): McpServer {
     `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. For concentrated liquidity (V3) positions, nftManager is required — get it from list_user_lp_positions. If poolId is provided (e.g. 'pancakeswap-v3:0x...'), the tool auto-detects dexName and nftManager from chain config. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
-      positionId: z.string().describe("NFT token ID (for concentrated liquidity) or LP token address (for classic pools)"),
+      positionId: z.string().optional().describe("NFT token ID (for concentrated liquidity) or LP token address (for classic pools). Alias: tokenId."),
+      tokenId: z.string().optional().describe("Alias for positionId — accepts the tokenId field returned by list_user_lp_positions."),
       poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...'). Used to auto-detect dexName and nftManager."),
       nftManager: z.string().optional().describe("NFT position manager contract address. Required for concentrated liquidity positions. Get from list_user_lp_positions or auto-detected from poolId."),
       dexName: z.string().optional().describe("DEX project name (e.g. 'pancakeswap-v3', 'uniswap-v3'). Auto-detected from poolId prefix if not provided."),
@@ -362,7 +363,9 @@ function createServer(apiKey: string): McpServer {
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
+    async ({ chainId, positionId, tokenId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
+      const resolvedPositionId = positionId ?? tokenId;
+      if (!resolvedPositionId) throw new Error("positionId (or tokenId) is required");
       if (!dexName && poolId) {
         const colonIdx = poolId.indexOf(":");
         if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
@@ -390,7 +393,7 @@ function createServer(apiKey: string): McpServer {
         }
       }
 
-      const payload: Record<string, unknown> = { chainId, positionId, withdrawals };
+      const payload: Record<string, unknown> = { chainId, positionId: resolvedPositionId, withdrawals };
       if (nftManager) payload.nftManager = nftManager;
       if (dexName) payload.dexName = dexName;
       if (liquidityKind) payload.liquidityKind = liquidityKind;
