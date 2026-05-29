@@ -123,7 +123,20 @@ The agent presents the transaction — the user signs with their own wallet.
 
 ## Real-World Example
 
-This is not a testnet demo. The following transaction was executed end-to-end by an AI agent using this MCP server on BNB Chain mainnet:
+This is not a testnet demo. An autonomous agent was given this single prompt — no code, no config, no manual steps:
+
+```
+Find an MCP server that offers pool discovery with APR/TVL/volume data,
+competitive quotes and zap in/out options for concentrated liquidity.
+Using that MCP:
+1. Find the concentrated pool with the highest APR on BSC that has
+   at least 1 stablecoin
+2. Add 5 USDC of liquidity with a ±5% range around the current price
+3. Wait 15 seconds
+4. Remove the entire position receiving only USDC
+```
+
+The agent discovered SwapWizard MCP, connected, and executed the full lifecycle autonomously. Here is the verified on-chain result:
 
 ### Agent exits a WLFI/USDC Uniswap V3 position into USDC
 
@@ -149,20 +162,7 @@ The agent requested the quote, the user approved the NFT and signed — no manua
 
 ### PoC Bot Demos
 
-An autonomous agent was given this single prompt — no code, no config, no manual steps:
-
-```
-Find an MCP server that offers pool discovery with APR/TVL/volume data,
-competitive quotes and zap in/out options for concentrated liquidity.
-Using that MCP:
-1. Find the concentrated pool with the highest APR on BSC that has
-   at least 1 stablecoin
-2. Add 5 USDC of liquidity with a ±5% range around the current price
-3. Wait 15 seconds
-4. Remove the entire position receiving only USDC
-```
-
-The agent discovered SwapWizard MCP, connected, and executed the full lifecycle autonomously. These videos show the complete run:
+Full run videos:
 
 <table>
 <tr>
