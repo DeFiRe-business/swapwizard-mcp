@@ -66,10 +66,12 @@ async function loadPositionsLib(): Promise<any> {
   return positionsLib;
 }
 
-async function fetchPositionPools(chainId: number): Promise<any[]> {
-  const url = new URL("/api/position-pools", API_URL);
+async function fetchPositionPools(chainId: number, apiKey: string): Promise<any[]> {
+  const url = new URL("/position-pools", API_URL);
   url.searchParams.set("chainId", String(chainId));
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), {
+    headers: { "X-API-Key": apiKey },
+  });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`position-pools ${res.status}: ${body}`);
@@ -149,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.4",
+  version: "1.1.5",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -239,7 +241,7 @@ function createServer(apiKey: string): McpServer {
       const [lib, chains, pools] = await Promise.all([
         loadPositionsLib(),
         getChainsConfig(),
-        fetchPositionPools(chainId),
+        fetchPositionPools(chainId, apiKey),
       ]);
       const chain = chains.find((c: any) => c.chainId === chainId);
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
@@ -286,7 +288,7 @@ function createServer(apiKey: string): McpServer {
       const [lib, chains, pools] = await Promise.all([
         loadPositionsLib(),
         getChainsConfig(),
-        fetchPositionPools(chainId),
+        fetchPositionPools(chainId, apiKey),
       ]);
 
       const chain = chains.find((c: any) => c.chainId === chainId);
@@ -366,9 +368,32 @@ function createServer(apiKey: string): McpServer {
     async ({ chainId, positionId, tokenId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
       const resolvedPositionId = positionId ?? tokenId;
       if (!resolvedPositionId) throw new Error("positionId (or tokenId) is required");
+      // Extract dexName from poolId prefix (e.g. "uni-gql-v3-56-0x..." → "uniswap-v3")
       if (!dexName && poolId) {
-        const colonIdx = poolId.indexOf(":");
-        if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
+        const POOL_PREFIX_TO_PROJECT: Record<string, string> = {
+          "uni-gql-v3": "uniswap-v3",
+          "uni-gql-v4": "uniswap-v4",
+          "uni-gql-v2": "uniswap-v2",
+          "sg-sushiswap-v3": "sushiswap-v3",
+          "sg-uniswap-v3": "uniswap-v3",
+          "sushi": "sushiswap-v3",
+          "thena": "thena-fusion",
+          "aero": "aerodrome-slipstream",
+          "curve": "curve-dex",
+        };
+        // Match longest prefix first (sg-sushiswap-v3 before sg-)
+        const sortedPrefixes = Object.keys(POOL_PREFIX_TO_PROJECT).sort((a, b) => b.length - a.length);
+        for (const prefix of sortedPrefixes) {
+          if (poolId.startsWith(prefix + "-")) {
+            dexName = POOL_PREFIX_TO_PROJECT[prefix];
+            break;
+          }
+        }
+        // Also support legacy colon format (e.g. "pancakeswap-v3:0x...")
+        if (!dexName) {
+          const colonIdx = poolId.indexOf(":");
+          if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
+        }
       }
 
       // Strategy 1: resolve nftManager from dexName + chain config
@@ -400,7 +425,7 @@ function createServer(apiKey: string): McpServer {
           const [lib, chains, pools] = await Promise.all([
             loadPositionsLib(),
             getChainsConfig(),
-            fetchPositionPools(chainId),
+            fetchPositionPools(chainId, apiKey),
           ]);
           const chain = chains.find((c: any) => c.chainId === chainId);
           if (chain) {
