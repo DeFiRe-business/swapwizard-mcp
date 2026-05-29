@@ -6,17 +6,30 @@
 
 # SwapWizard MCP Server
 
-Model Context Protocol (MCP) server for the [SwapWizard](https://swapwizard.xyz) DeFi API. Enables AI agents to get swap quotes, manage liquidity, and discover pools across multiple EVM chains.
+[![npm](https://img.shields.io/npm/v/@swapwizard/mcp-server)](https://www.npmjs.com/package/@swapwizard/mcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+Model Context Protocol (MCP) server for the [SwapWizard](https://swapwizard.xyz) DeFi API. Enables AI agents to get swap quotes, manage liquidity, and discover pools across 5 EVM chains.
+
+**Non-custodial**: every tool returns `router`, `callData`, and `value` — the agent presents the transaction, the user signs with their own wallet. SwapWizard never holds keys.
 
 ## Quick Start
 
 ### 1. Get an API Key
 
-Go to [SwapWizard API Docs](https://swapwizard.xyz/api-docs), connect your wallet, and sign to get your API key.
+Go to [swapwizard.xyz/integrators](https://swapwizard.xyz/integrators), connect your wallet, and sign a message (no gas cost).
 
-### 2. Configure your AI client
+### 2. Connect via MCP
 
-#### Claude Desktop
+#### Remote (no install)
+
+```
+URL: https://mcp.swapwizard.xyz/mcp
+Transport: streamable-http
+Header: X-API-Key: your-api-key
+```
+
+#### Local — Claude Desktop
 
 Add to `claude_desktop_config.json`:
 
@@ -27,7 +40,6 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "@swapwizard/mcp-server"],
       "env": {
-        "SWAPWIZARD_API_URL": "https://api.swapwizard.xyz",
         "SWAPWIZARD_API_KEY": "your-api-key"
       }
     }
@@ -35,9 +47,9 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-#### Cursor
+#### Local — Cursor
 
-Add to `.cursor/mcp.json` in your project:
+Add to `.cursor/mcp.json`:
 
 ```json
 {
@@ -46,7 +58,6 @@ Add to `.cursor/mcp.json` in your project:
       "command": "npx",
       "args": ["-y", "@swapwizard/mcp-server"],
       "env": {
-        "SWAPWIZARD_API_URL": "https://api.swapwizard.xyz",
         "SWAPWIZARD_API_KEY": "your-api-key"
       }
     }
@@ -54,172 +65,108 @@ Add to `.cursor/mcp.json` in your project:
 }
 ```
 
-#### Claude Code
+#### Local — Claude Code
 
 ```bash
-claude mcp add swapwizard -- npx -y @swapwizard/mcp-server
+claude mcp add swapwizard -e SWAPWIZARD_API_KEY=your-api-key -- npx -y @swapwizard/mcp-server
 ```
-
-Then set environment variables `SWAPWIZARD_API_URL` and `SWAPWIZARD_API_KEY`.
 
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `swapwizard_chains` | List all available blockchain networks |
-| `swapwizard_health` | API health check and uptime |
-| `swapwizard_pools` | Search pools by chain, tokens, and type |
-| `swapwizard_positions` | List liquidity positions for a wallet |
-| `swapwizard_quote` | Get best swap quote with pre-encoded callData |
-| `swapwizard_add_liquidity` | Quote add-liquidity with automatic zap |
-| `swapwizard_remove_liquidity` | Quote remove-liquidity for a position |
+| `get_supported_chains` | List supported EVM chains with IDs, gas tokens, DEX list, and position config |
+| `get_supported_dexes` | AMMs/DEX sources SwapWizard routes across per chain |
+| `check_api_health` | API availability check |
+| `search_liquidity_pools` | Discover pools by chain, tokens, type. Returns poolId, symbol, fee tier, protocol, APY, TVL, 24h volume |
+| `list_user_lp_positions` | Full LP position details: value, fees, APR, in-range status, impermanent loss |
+| `get_swap_quote` | Best swap route across all DEXes. Returns router + callData + value ready to sign |
+| `get_clean_quote` | Swap quote excluding the caller's own LP position from pool state (for rebalancing) |
+| `zap_into_lp_position` | Single-tx entry into any LP position from any token |
+| `zap_out_of_lp_position` | Single-tx exit from any LP position into any token. Pass `sender` to auto-detect nftManager |
 
-## Tools Detail
+## Execution Model
 
-### swapwizard_chains
+Tools that return `router`, `callData`, `value` are executed by the user:
 
-List all blockchain networks available on SwapWizard.
+1. If the input token is not native, approve the router to spend the token amount (ERC-20 approve)
+2. Send a transaction: `to: router`, `data: callData`, `value: value`
 
-```
-No parameters required.
-```
+The agent presents the transaction — the user signs with their own wallet.
 
-### swapwizard_pools
-
-Search liquidity pools.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `chainId` | number | Yes | EVM chain ID (e.g. 56 for BSC) |
-| `tokens` | string | No | Comma-separated token addresses |
-| `poolType` | string | No | `"classic"` or `"concentrated"` |
-
-### swapwizard_positions
-
-List liquidity positions owned by a wallet.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `chainId` | number | Yes | EVM chain ID |
-| `owner` | string | Yes | Wallet address |
-
-### swapwizard_quote
-
-Get the best swap quote across all DEXes. The response includes `router`, `callData`, and `value` ready for `eth_sendTransaction`.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `chainId` | number | Yes | EVM chain ID |
-| `tokenIn` | string | Yes | Input token address (`0x0000...0000` for native) |
-| `tokenOut` | string | Yes | Output token address |
-| `side` | string | Yes | `"exactIn"` or `"exactOut"` |
-| `amount` | string | Yes | Amount as uint256 string in token decimals |
-| `slippageBps` | number | No | Slippage in basis points (default: 100 = 1%) |
-| `affiliateCode` | string | No | Registered affiliate wallet |
-| `excludePositions` | array | No | Positions to subtract from pool state (see below) |
-
-#### excludePositions
-
-Simulate swap prices **as if your liquidity positions had been removed**. Useful for rebalancing bots that need to know the real price after withdrawing their own liquidity.
-
-Each position object:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `poolAddress` | string | Pool contract address |
-| `liquidity` | string | Position liquidity as uint256 string |
-| `tickLower` | number | Lower tick bound |
-| `tickUpper` | number | Upper tick bound |
-
-Get these values from `swapwizard_positions`.
-
-### swapwizard_add_liquidity
-
-Quote an add-liquidity operation with automatic zap.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `chainId` | number | Yes | EVM chain ID |
-| `poolId` | string | Yes | Pool ID from `swapwizard_pools` |
-| `deposits` | array | Yes | `[{ token, amount }]` — tokens and amounts to deposit |
-| `sender` | string | No | Wallet address for simulation |
-| `tickLower` | number | No | Custom lower tick (concentrated) |
-| `tickUpper` | number | No | Custom upper tick (concentrated) |
-| `affiliateCode` | string | No | Registered affiliate wallet |
-
-### swapwizard_remove_liquidity
-
-Quote a remove-liquidity operation.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `chainId` | number | Yes | EVM chain ID |
-| `poolId` | string | Yes | Pool ID from `swapwizard_pools` |
-| `tokenId` | string | No | NFT token ID (concentrated positions) |
-| `withdrawals` | array | No | `[{ token }]` — tokens to receive |
-| `sender` | string | No | Position owner wallet |
-| `affiliateCode` | string | No | Registered affiliate wallet |
-
-## Example Agent Flow
+## Agent Flows
 
 ### Swap
 
-1. `swapwizard_chains` → find available chains
-2. `swapwizard_quote` → get best route + callData
-3. User signs and sends the transaction to `router` with `callData` and `value`
+1. `get_supported_chains` — find available chains
+2. `get_swap_quote` — get best route + callData
+3. User approves (if non-native) and signs the transaction
 
 ### Add Liquidity
 
-1. `swapwizard_chains` → find available chains
-2. `swapwizard_pools` → find target pool (filter by tokens)
-3. `swapwizard_add_liquidity` → get router + callData
-4. User approves tokens and sends the transaction
+1. `search_liquidity_pools` — find target pool by tokens
+2. `zap_into_lp_position` — get router + callData
+3. User approves and signs the transaction
 
 ### Remove Liquidity
 
-1. `swapwizard_positions` → list wallet positions
-2. `swapwizard_remove_liquidity` → get router + callData
-3. User approves (NFT or LP token) and sends the transaction
+1. `list_user_lp_positions` — get current positions
+2. `zap_out_of_lp_position` — get router + callData (pass `sender` for auto-detection)
+3. User signs the transaction
 
-### Strategic Rebalancing (with excludePositions)
+### Rebalance (with clean quote)
 
-1. `swapwizard_positions` → get current positions
-2. `swapwizard_quote` with `excludePositions` → simulate price after removing your liquidity
-3. Compare prices across pools to decide the optimal move
-4. Execute remove → swap → add in sequence
+1. `list_user_lp_positions` — get position details
+2. `get_clean_quote` — price excluding own liquidity
+3. `zap_out_of_lp_position` — exit current position
+4. `zap_into_lp_position` — enter new position
 
-## Affiliate Integration
+## Supported Chains
 
-Embed SwapWizard directly in your site via widgets. Configure your affiliate address, chain, theme, and language with `data-` attributes — no backend required.
-
-```html
-<div data-swapwizard="swap"
-     data-affiliate="0xYourWalletAddress"
-     data-theme="dark">
-</div>
-<script src="https://swapwizard.xyz/widget.js" async></script>
-```
-
-Widget modes: `swap`, `pools`, or `full` (swap + pools). See the full configurator with live preview at [swapwizard.xyz/developers](https://swapwizard.xyz/developers).
+Ethereum (1), Arbitrum (42161), Base (8453), Polygon (137), BNB Chain (56)
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SWAPWIZARD_API_URL` | No | `https://api.swapwizard.xyz` | Base URL of the SwapWizard API |
-| `SWAPWIZARD_API_KEY` | Yes | — | API key from wallet authentication |
+| `SWAPWIZARD_API_KEY` | Yes | — | API key from [swapwizard.xyz/integrators](https://swapwizard.xyz/integrators) |
+| `SWAPWIZARD_API_URL` | No | `https://api.swapwizard.xyz` | API base URL |
+
+## Affiliate Integration
+
+Earn fees by embedding SwapWizard in your site:
+
+```html
+<div data-swapwizard="swap" data-affiliate="0xYourAddress" data-theme="dark"></div>
+<script src="https://swapwizard.xyz/widget.js" async></script>
+```
+
+Widget modes: `swap`, `pools`, or `full`. Configure at [swapwizard.xyz/developers](https://swapwizard.xyz/developers).
 
 ## Rate Limits
 
-The public API is rate-limited to **60 requests per minute** per API key.
+60 requests per minute per API key.
 
 ## Development
 
 ```bash
 npm install
-npm run dev
+npm run dev          # run with tsx (hot reload)
+npm run build        # compile TypeScript
+npm test             # run tests
 ```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+## Links
+
+- [Website](https://swapwizard.xyz)
+- [API Docs](https://swapwizard.xyz/api-docs)
+- [AI Agent Docs](https://swapwizard.xyz/ai-agents)
+- [npm](https://www.npmjs.com/package/@swapwizard/mcp-server)
+- [Widget Configurator](https://swapwizard.xyz/developers)
+- [Changelog](./CHANGELOG.md)
 
 ## License
 
-MIT
+[MIT](./LICENSE)
