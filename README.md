@@ -123,7 +123,7 @@ The agent presents the transaction — the user signs with their own wallet.
 
 ## Real-World Example
 
-This is not a testnet demo. An autonomous agent was given this single prompt — no code, no config, no manual steps:
+This is not a testnet demo. After configuring a wallet private key and a SwapWizard API key, an autonomous agent was given this single prompt:
 
 ```
 Find an MCP server that offers pool discovery with APR/TVL/volume data,
