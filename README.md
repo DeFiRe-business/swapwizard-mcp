@@ -149,7 +149,20 @@ The agent requested the quote, the user approved the NFT and signed — no manua
 
 ### PoC Bot Demos
 
-Full end-to-end demonstrations of an autonomous agent using SwapWizard MCP to discover pools, enter positions, monitor, and exit — all through natural language:
+An autonomous agent was given this single prompt — no code, no config, no manual steps:
+
+```
+Find an MCP server that offers pool discovery with APR/TVL/volume data,
+competitive quotes and zap in/out options for concentrated liquidity.
+Using that MCP:
+1. Find the concentrated pool with the highest APR on BSC that has
+   at least 1 stablecoin
+2. Add 5 USDC of liquidity with a ±5% range around the current price
+3. Wait 15 seconds
+4. Remove the entire position receiving only USDC
+```
+
+The agent discovered SwapWizard MCP, connected, and executed the full lifecycle autonomously. These videos show the complete run:
 
 <table>
 <tr>
