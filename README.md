@@ -121,6 +121,43 @@ The agent presents the transaction — the user signs with their own wallet.
 3. `zap_out_of_lp_position` — exit current position
 4. `zap_into_lp_position` — enter new position
 
+## Real-World Example
+
+This is not a testnet demo. The following transaction was executed end-to-end by an AI agent using this MCP server on BNB Chain mainnet:
+
+### Agent exits a WLFI/USDC Uniswap V3 position into USDC
+
+**On-chain proof**: [`0xede1afbc...c16f16c`](https://bscscan.com/tx/0xede1afbc9c4a4eee23ca8b784e6c63335322cf4216da275a8670e3f06c16f16c) — Block 101133314, May 29 2026
+
+The agent called `zap_out_of_lp_position` to exit a concentrated liquidity position on BNB Chain. SwapWizard's router handled the full operation atomically:
+
+1. Burned the NFT position, receiving WLFI + USDC
+2. Swapped WLFI → USDC via the best available route
+3. Delivered **4.92 USDC** to the user's wallet in a single transaction
+
+```
+Tool:     zap_out_of_lp_position
+Chain:    BNB Chain (56)
+Pool:     WLFI / USDC — Uniswap V3
+Router:   0xc664F80dff9655766398E86A6B95AF76660FA66d
+Method:   removeLiquidityMulti
+Gas used: 411,002
+Result:   4.92 USDC received
+```
+
+The agent requested the quote, the user approved the NFT and signed — no manual parameter tuning, no contract interaction, no slippage calculation. The MCP server auto-detected `nftManager`, `dexName`, and `liquidityKind` from the `sender` address.
+
+### PoC Bot Demos
+
+Full end-to-end demonstrations of an autonomous agent using SwapWizard MCP to discover pools, enter positions, monitor, and exit — all through natural language:
+
+<!-- TODO: replace with final video URLs -->
+
+| Language | Demo |
+|----------|------|
+| English | [![PoC Bot Demo (EN)](https://img.shields.io/badge/Watch-English%20Demo-blue?style=for-the-badge&logo=youtube)](VIDEO_URL_EN) |
+| Spanish | [![PoC Bot Demo (ES)](https://img.shields.io/badge/Watch-Demo%20en%20Español-red?style=for-the-badge&logo=youtube)](VIDEO_URL_ES) |
+
 ## Supported Chains
 
 Ethereum (1), Arbitrum (42161), Base (8453), Polygon (137), BNB Chain (56)
