@@ -151,12 +151,13 @@ The agent requested the quote, the user approved the NFT and signed — no manua
 
 Full end-to-end demonstrations of an autonomous agent using SwapWizard MCP to discover pools, enter positions, monitor, and exit — all through natural language:
 
-<!-- TODO: replace with final video URLs -->
+#### English
 
-| Language | Demo |
-|----------|------|
-| English | [![PoC Bot Demo (EN)](https://img.shields.io/badge/Watch-English%20Demo-blue?style=for-the-badge&logo=youtube)](VIDEO_URL_EN) |
-| Spanish | [![PoC Bot Demo (ES)](https://img.shields.io/badge/Watch-Demo%20en%20Español-red?style=for-the-badge&logo=youtube)](VIDEO_URL_ES) |
+https://github.com/DeFiRe-business/swapwizard-mcp/raw/main/demos/poc-demo-en.mp4
+
+#### Español
+
+https://github.com/DeFiRe-business/swapwizard-mcp/raw/main/demos/poc-demo-es.mp4
 
 ## Supported Chains
 
