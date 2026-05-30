@@ -367,7 +367,7 @@ function createServer(apiKey: string): McpServer {
     },
     async ({ chainId, positionId, tokenId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
       const resolvedPositionId = positionId ?? tokenId;
-      if (!resolvedPositionId) throw new Error("positionId (or tokenId) is required");
+      if (!resolvedPositionId && !poolId) throw new Error("positionId (or tokenId) is required — or provide poolId for classic pools");
       // Extract dexName from poolId prefix (e.g. "uni-gql-v3-56-0x..." → "uniswap-v3")
       if (!dexName && poolId) {
         const POOL_PREFIX_TO_PROJECT: Record<string, string> = {
@@ -400,22 +400,46 @@ function createServer(apiKey: string): McpServer {
       if (!nftManager && dexName) {
         const chains = await getChainsConfig();
         const chain = chains.find((c: any) => c.chainId === chainId);
-        if (chain?.positionConfig?.v3NftManagers) {
-          const PROJECT_TO_DEX: Record<string, string> = {
-            "uniswap-v3": "Uniswap V3",
-            "sushiswap-v3": "SushiSwap V3",
-            "pancakeswap-amm-v3": "PancakeSwap V3",
-            "pancakeswap-v3": "PancakeSwap V3",
-            "aerodrome-slipstream": "Aerodrome Slipstream",
-            "camelot-v3": "Camelot",
-            "thena-fusion": "THENA",
-            "quickswap-v3": "QuickSwap",
-          };
-          const displayName = PROJECT_TO_DEX[dexName] ?? dexName;
-          const manager = chain.positionConfig.v3NftManagers.find(
-            (m: any) => m.dexName === displayName || m.dexName === dexName,
-          );
-          if (manager) nftManager = manager.address;
+        const pc = chain?.positionConfig;
+        if (pc) {
+          // 1a. V3-style NftManagers (Uniswap V3, SushiSwap V3, PancakeSwap V3, Aerodrome, etc.)
+          if (!nftManager && pc.v3NftManagers) {
+            const PROJECT_TO_DEX: Record<string, string> = {
+              "uniswap-v3": "Uniswap V3",
+              "sushiswap-v3": "SushiSwap V3",
+              "pancakeswap-amm-v3": "PancakeSwap V3",
+              "pancakeswap-v3": "PancakeSwap V3",
+              "aerodrome-slipstream": "Aerodrome Slipstream",
+              "camelot-v3": "Camelot",
+              "thena-fusion": "THENA",
+              "quickswap-v3": "QuickSwap",
+            };
+            const displayName = PROJECT_TO_DEX[dexName] ?? dexName;
+            const manager = pc.v3NftManagers.find(
+              (m: any) => m.dexName === displayName || m.dexName === dexName,
+            );
+            if (manager) nftManager = manager.address;
+          }
+          // 1b. Uniswap V4 PositionManager
+          if (!nftManager && dexName === "uniswap-v4" && pc.v4PositionManager) {
+            nftManager = pc.v4PositionManager;
+          }
+          // 1c. PancakeSwap Infinity CL PositionManager
+          if (!nftManager && dexName === "pancakeswap-infinity-cl" && pc.pcsInfinityCLPositionManager) {
+            nftManager = pc.pcsInfinityCLPositionManager;
+          }
+          // 1d. Algebra-based DEXes (Camelot, THENA, QuickSwap)
+          if (!nftManager && pc.algebraNftManager && pc.algebraDexName) {
+            const ALGEBRA_PROJECTS: Record<string, string> = {
+              "camelot-v3": "Camelot",
+              "thena-fusion": "THENA",
+              "quickswap-v3": "QuickSwap",
+            };
+            const algebraDisplayName = ALGEBRA_PROJECTS[dexName];
+            if (algebraDisplayName && algebraDisplayName === pc.algebraDexName) {
+              nftManager = pc.algebraNftManager;
+            }
+          }
         }
       }
 
@@ -443,7 +467,9 @@ function createServer(apiKey: string): McpServer {
         } catch (_) { /* best-effort — fall through to API validation */ }
       }
 
-      const payload: Record<string, unknown> = { chainId, positionId: resolvedPositionId, withdrawals };
+      const payload: Record<string, unknown> = { chainId, withdrawals };
+      if (resolvedPositionId) payload.positionId = resolvedPositionId;
+      if (poolId) payload.poolId = poolId;
       if (nftManager) payload.nftManager = nftManager;
       if (dexName) payload.dexName = dexName;
       if (liquidityKind) payload.liquidityKind = liquidityKind;

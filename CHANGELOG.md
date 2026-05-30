@@ -2,6 +2,13 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.1.6] - 2026-05-30
+
+### Fixed
+- **nftManager resolution for non-V3 protocols** — Strategy 1 now resolves nftManager from chain config for Uniswap V4 (`v4PositionManager`), PancakeSwap Infinity CL (`pcsInfinityCLPositionManager`), and Algebra-based DEXes like Camelot, THENA, QuickSwap (`algebraNftManager`). Previously only searched `v3NftManagers`.
+- **Classic pool zap_out no longer requires positionId** — for V2, Balancer, Curve, and AMM pools where positions are LP tokens (not NFTs), `poolId` + `sender` is now sufficient. The API resolves the LP token automatically.
+- **poolId now forwarded to API** — `zap_out_of_lp_position` was not passing `poolId` in the payload to `/removeliquidity/quote`, preventing server-side auto-detection of dexName and nftManager.
+
 ## [1.1.5] - 2026-05-29
 
 ### Fixed
