@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.1.7] - 2026-05-30
+
+### Fixed
+- **dexName resolution for PancakeSwap pools** — `pcs-` prefixed poolIds (used by pancakeswap-v3, pancakeswap-amm, pancakeswap-infinity-cl) were not matched by `POOL_PREFIX_TO_PROJECT`. Added API fallback: when no prefix matches, queries `/pools` to get the `project` field from the pool data.
+
 ## [1.1.6] - 2026-05-30
 
 ### Fixed

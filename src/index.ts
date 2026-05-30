@@ -394,6 +394,15 @@ function createServer(apiKey: string): McpServer {
           const colonIdx = poolId.indexOf(":");
           if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
         }
+        // Fallback: look up the pool in the API to get the project field
+        if (!dexName) {
+          try {
+            const pools = await apiGet("/pools", { chainId: String(chainId) }) as any;
+            const poolList = pools?.pools ?? (Array.isArray(pools) ? pools : []);
+            const match = poolList.find((p: any) => p.poolId === poolId);
+            if (match?.project) dexName = match.project;
+          } catch (_) { /* best-effort */ }
+        }
       }
 
       // Strategy 1: resolve nftManager from dexName + chain config
