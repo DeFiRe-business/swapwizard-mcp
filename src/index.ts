@@ -151,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.12",
+  version: "1.1.13",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -349,7 +349,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "zap_out_of_lp_position",
-    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. WORKFLOW: Before calling this tool, ALWAYS call list_user_lp_positions first to read the position — it returns positionId, nftManager, dexName, and liquidityKind which you MUST pass here. Also pass sender (wallet address) and poolId (from search_liquidity_pools). TWO POOL TYPES: (1) Concentrated liquidity (Uniswap V3/V4, PancakeSwap V3, SushiSwap V3, Algebra): positionId is the NFT token ID, nftManager is required. (2) Classic pools (Curve, Balancer, Uniswap V2, SushiSwap, PancakeSwap AMM, etc.): positionId is the LP token contract address (NOT the pool address), no nftManager needed. Get positionId from list_user_lp_positions in both cases. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
+    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position. WORKFLOW: (1) Try list_user_lp_positions to get nftManager, dexName, liquidityKind for the position. (2) Call this tool passing ALL available fields: positionId/tokenId, poolId, sender, and any fields from step 1. If list_user_lp_positions returns empty or fails, still call this tool with positionId + poolId + sender — the server auto-resolves nftManager and dexName. TWO POOL TYPES: (a) Concentrated liquidity (Uniswap V3/V4, PancakeSwap V3/Infinity CL, SushiSwap V3, Algebra): positionId = NFT token ID from zap_into_lp_position receipt. (b) Classic pools (Curve, Balancer, PancakeSwap AMM, Uniswap V2): positionId = LP token address (auto-resolved from poolId if missing). Returns router, callData, value for execution.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       positionId: z.string().optional().describe("For concentrated liquidity: the NFT token ID. For classic pools (Curve, Balancer, Uniswap V2): the LP token contract address. Get this from list_user_lp_positions. Alias: tokenId."),
@@ -394,13 +394,14 @@ function createServer(apiKey: string): McpServer {
           const colonIdx = poolId.indexOf(":");
           if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
         }
-        // Fallback: look up the pool in the API to get the project field
+        // Fallback: look up the pool in /position-pools (covers PCS, Curve, all classic + CL pools)
         if (!dexName) {
           try {
-            const pools = await apiGet("/pools", { chainId: String(chainId) }) as any;
-            const poolList = pools?.pools ?? (Array.isArray(pools) ? pools : []);
-            const match = poolList.find((p: any) => p.poolId === poolId);
+            const posPools = await fetchPositionPools(chainId, apiKey);
+            const match = posPools.find((p: any) => p.poolId === poolId);
             if (match?.project) dexName = match.project;
+            if (!resolvedPositionId && match?.lpTokenAddress) resolvedPositionId = match.lpTokenAddress;
+            if (!liquidityKind && match?.liquidityKind) liquidityKind = match.liquidityKind;
           } catch (_) { /* best-effort */ }
         }
       }
