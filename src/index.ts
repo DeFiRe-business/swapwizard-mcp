@@ -151,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.11",
+  version: "1.1.12",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -405,36 +405,17 @@ function createServer(apiKey: string): McpServer {
         }
       }
 
-      // Resolve missing positionId from pool data or user positions (classic pools need LP token address)
+      // Resolve missing positionId (LP token address) from /position-pools for classic pools
       if (!resolvedPositionId && poolId) {
         try {
-          const pools = await apiGet("/pools", { chainId: String(chainId) }) as any;
-          const poolList = pools?.pools ?? (Array.isArray(pools) ? pools : []);
-          const match = poolList.find((p: any) => p.poolId === poolId);
-          if (match) {
-            const lpAddr = match.lpToken ?? match.lpAddress ?? match.address;
-            if (lpAddr) resolvedPositionId = lpAddr;
+          const posPools = await fetchPositionPools(chainId, apiKey);
+          const match = posPools.find((p: any) => p.poolId === poolId);
+          if (match?.lpTokenAddress) {
+            resolvedPositionId = match.lpTokenAddress;
             if (!dexName && match.project) dexName = match.project;
+            if (!liquidityKind && match.liquidityKind) liquidityKind = match.liquidityKind;
           }
         } catch (_) { /* best-effort */ }
-        // Fallback: search user positions for a matching pool
-        if (!resolvedPositionId && sender) {
-          try {
-            const [lib, chains0, pools0] = await Promise.all([loadPositionsLib(), getChainsConfig(), fetchPositionPools(chainId, apiKey)]);
-            const chain = chains0.find((c: any) => c.chainId === chainId);
-            if (chain) {
-              const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-              const positions = await lib.readAllPositions(sender, config, pools0);
-              const match = Array.isArray(positions) ? positions.find((p: any) => p.poolId === poolId) : undefined;
-              if (match?.positionId) {
-                resolvedPositionId = String(match.positionId);
-                if (!dexName && match.dexName) dexName = match.dexName;
-                if (!liquidityKind && match.liquidityKind) liquidityKind = match.liquidityKind;
-                if (!nftManager && match.nftManager) nftManager = match.nftManager;
-              }
-            }
-          } catch (_) { /* best-effort */ }
-        }
       }
 
       // Strategy 1: resolve nftManager from dexName + chain config
