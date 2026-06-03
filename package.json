@@ -1,6 +1,6 @@
 {
   "name": "@swapwizard/mcp-server",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "description": "Model Context Protocol server for the SwapWizard DeFi API — swap quotes, liquidity management, and pool discovery for AI agents.",
   "mcpName": "io.github.defire-business/swapwizard-mcp",
   "type": "module",
