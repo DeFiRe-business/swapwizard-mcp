@@ -56,7 +56,7 @@ let positionsLib: any = null;
 
 async function loadPositionsLib(): Promise<any> {
   if (positionsLib) return positionsLib;
-  const bundleUrl = `${API_URL}/lib/user-positions.mjs`;
+  const bundleUrl = "https://swapwizard.xyz/lib/user-positions.mjs";
   const res = await fetch(bundleUrl);
   if (!res.ok) throw new Error(`Failed to download positions library: ${res.status}`);
   const code = await res.text();
@@ -151,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.10",
+  version: "1.1.11",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
