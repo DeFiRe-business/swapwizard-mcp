@@ -151,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.5",
+  version: "1.1.8",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -232,7 +232,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "list_user_lp_positions",
-    `Client-side library call. Returns full details of every LP position a wallet holds across all supported protocols and chains: current value, unclaimed fees, in-range/out-of-range status, APR, share of in-range liquidity, impermanent-loss estimate. Use for portfolio review and rebalancing decisions.`,
+    `Client-side library call. Returns full details of every LP position a wallet holds across all supported protocols and chains: current value, unclaimed fees, in-range/out-of-range status, APR, share of in-range liquidity, impermanent-loss estimate. Each position includes positionId, nftManager, dexName, and liquidityKind — these are the exact fields required by zap_out_of_lp_position. IMPORTANT: Always call this BEFORE zap_out_of_lp_position to obtain nftManager, dexName, and liquidityKind for the target position.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       owner: z.string().describe("Wallet address to query positions for"),
@@ -349,19 +349,19 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "zap_out_of_lp_position",
-    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. IMPORTANT: Always pass sender (the wallet that owns the position) — this enables automatic detection of nftManager, dexName, and liquidityKind from on-chain position data when those fields are not provided. Alternatively, pass nftManager and dexName explicitly (get them from list_user_lp_positions). If poolId is provided (e.g. 'pancakeswap-v3:0x...'), dexName and nftManager are auto-detected from chain config. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
+    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into any output token: handles LP burn, intermediate swaps, and fee collection. Surplus returned to the user. WORKFLOW: Before calling this tool, ALWAYS call list_user_lp_positions first to read the position — it returns nftManager, dexName, and liquidityKind which you MUST pass here. Also pass sender (wallet address) and poolId (from search_liquidity_pools). Without nftManager the call WILL fail for concentrated-liquidity positions (Uniswap V3/V4, PancakeSwap V3, SushiSwap V3, Algebra, etc.). Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       positionId: z.string().optional().describe("NFT token ID (for concentrated liquidity) or LP token address (for classic pools). Alias: tokenId."),
       tokenId: z.string().optional().describe("Alias for positionId — accepts the tokenId field returned by list_user_lp_positions."),
-      poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...'). Used to auto-detect dexName and nftManager."),
-      nftManager: z.string().optional().describe("NFT position manager contract address. Required for CL positions but auto-detected if sender is provided. Can also get from list_user_lp_positions or auto-detected from poolId."),
-      dexName: z.string().optional().describe("DEX project name (e.g. 'pancakeswap-v3', 'uniswap-v3'). Auto-detected from poolId prefix if not provided."),
-      liquidityKind: z.string().optional().describe("Liquidity kind override: UNIV3, UNIV4, ALGEBRA, SLIPSTREAM, PCS_INF_CL, PCS_INF_BIN, CURVE, BAL_V2, BAL_V3, UNIV2, SOLIDLY"),
+      poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...'). ALWAYS pass this — it is the same poolId used during zap_into_lp_position and enables auto-detection of dexName and nftManager."),
+      nftManager: z.string().optional().describe("NFT position manager contract address. Auto-detected from poolId or sender — only pass if you have it from list_user_lp_positions and did not pass poolId."),
+      dexName: z.string().optional().describe("DEX project name (e.g. 'pancakeswap-v3', 'uniswap-v3'). Auto-detected from poolId — only pass if poolId is not available."),
+      liquidityKind: z.string().optional().describe("Liquidity kind override: UNIV3, UNIV4, ALGEBRA, SLIPSTREAM, PCS_INF_CL, PCS_INF_BIN, CURVE, BAL_V2, BAL_V3, UNIV2, SOLIDLY. Auto-detected — only pass to override."),
       withdrawals: z.array(z.object({
         token: z.string().describe("Token address to withdraw to"),
       })).min(1).describe("Tokens to receive after removal"),
-      sender: z.string().optional().describe("Wallet address of the position owner. STRONGLY RECOMMENDED: enables auto-detection of nftManager, dexName, and liquidityKind from on-chain data."),
+      sender: z.string().optional().describe("Wallet address of the position owner. ALWAYS pass this — it is required for auto-detection of nftManager, dexName, and liquidityKind from on-chain data."),
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
@@ -474,6 +474,55 @@ function createServer(apiKey: string): McpServer {
             }
           }
         } catch (_) { /* best-effort — fall through to API validation */ }
+      }
+
+      // Strategy 3: brute-force ownerOf(positionId) on all known managers via RPC
+      if (!nftManager && resolvedPositionId) {
+        try {
+          const [lib, chains3] = await Promise.all([loadPositionsLib(), getChainsConfig()]);
+          const chain = chains3.find((c: any) => c.chainId === chainId);
+          const pc = chain?.positionConfig;
+          const rpcUrls: string[] = lib.PUBLIC_RPCS?.[chainId] ?? [];
+          if (pc && rpcUrls.length > 0) {
+            const candidates: Array<{ address: string; dex: string; kind?: string }> = [];
+            if (pc.v4PositionManager) candidates.push({ address: pc.v4PositionManager, dex: "uniswap-v4", kind: "UNIV4" });
+            if (pc.pcsInfinityCLPositionManager) candidates.push({ address: pc.pcsInfinityCLPositionManager, dex: "pancakeswap-infinity-cl", kind: "PCS_INF_CL" });
+            if (pc.algebraNftManager && pc.algebraDexName) {
+              const ALGEBRA_REV: Record<string, string> = { Camelot: "camelot-v3", THENA: "thena-fusion", QuickSwap: "quickswap-v3" };
+              candidates.push({ address: pc.algebraNftManager, dex: ALGEBRA_REV[pc.algebraDexName] ?? pc.algebraDexName, kind: "ALGEBRA" });
+            }
+            if (pc.v3NftManagers) {
+              const DEX_TO_PROJECT: Record<string, string> = {
+                "Uniswap V3": "uniswap-v3", "SushiSwap V3": "sushiswap-v3",
+                "PancakeSwap V3": "pancakeswap-v3", "PancakeSwap V3 (old)": "pancakeswap-v3",
+                "Aerodrome Slipstream": "aerodrome-slipstream",
+              };
+              for (const m of pc.v3NftManagers) {
+                candidates.push({ address: m.address, dex: DEX_TO_PROJECT[m.dexName] ?? m.dexName, kind: m.dexKind ?? "UNIV3" });
+              }
+            }
+            // ownerOf(uint256) selector = 0x6352211e
+            const tokenIdHex = BigInt(resolvedPositionId).toString(16).padStart(64, "0");
+            const callData = "0x6352211e" + tokenIdHex;
+            const rpcUrl = rpcUrls[0];
+            for (const candidate of candidates) {
+              try {
+                const res = await fetch(rpcUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: candidate.address, data: callData }, "latest"] }),
+                });
+                const json = await res.json() as any;
+                if (json.result && json.result.length === 66 && !json.error) {
+                  nftManager = candidate.address;
+                  if (!dexName) dexName = candidate.dex;
+                  if (!liquidityKind) liquidityKind = candidate.kind;
+                  break;
+                }
+              } catch (_) { continue; }
+            }
+          }
+        } catch (_) { /* best-effort */ }
       }
 
       const payload: Record<string, unknown> = { chainId, withdrawals };
