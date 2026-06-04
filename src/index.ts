@@ -67,7 +67,7 @@ async function loadPositionsLib(): Promise<any> {
 }
 
 async function fetchPositionPools(chainId: number, apiKey: string): Promise<any[]> {
-  const url = new URL("/position-pools", API_URL);
+  const url = new URL("/api/v2.0/position-pools", API_URL);
   url.searchParams.set("chainId", String(chainId));
   const res = await fetch(url.toString(), {
     headers: { "X-API-Key": apiKey },
@@ -246,7 +246,8 @@ function createServer(apiKey: string): McpServer {
       const chain = chains.find((c: any) => c.chainId === chainId);
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
       const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-      return lib.readAllPositions(owner, config, pools);
+      const result = await lib.readAllPositions(owner, config, pools);
+      return result.positions ?? result;
     }),
   );
 
