@@ -151,7 +151,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.1.13",
+  version: "1.2.0",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -232,12 +232,13 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "list_user_lp_positions",
-    `Client-side library call. Returns full details of every LP position a wallet holds across all supported protocols and chains: current value, unclaimed fees, in-range/out-of-range status, APR, share of in-range liquidity, impermanent-loss estimate. Each position includes positionId, nftManager, dexName, and liquidityKind — these are the exact fields required by zap_out_of_lp_position. IMPORTANT: Always call this BEFORE zap_out_of_lp_position to obtain nftManager, dexName, and liquidityKind for the target position.`,
+    `Reads all LP positions a wallet holds on a given chain. Each position includes positionId, nftManager, dexName, liquidityKind, token addresses, amounts, fees, in-range status, APR, and USD values. IMPORTANT: Always call this BEFORE zap_out_of_lp_position — pass the returned positionId, nftManager, dexName, and liquidityKind directly to zap_out_of_lp_position.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       owner: z.string().describe("Wallet address to query positions for"),
+      rpcUrl: z.string().optional().describe("Custom RPC endpoint URL. Recommended to avoid throttling from public RPCs, especially on high-traffic chains like BSC or Polygon."),
     },
-    async ({ chainId, owner }) => safeApiCall(async () => {
+    async ({ chainId, owner, rpcUrl }) => safeApiCall(async () => {
       const [lib, chains, pools] = await Promise.all([
         loadPositionsLib(),
         getChainsConfig(),
@@ -245,7 +246,8 @@ function createServer(apiKey: string): McpServer {
       ]);
       const chain = chains.find((c: any) => c.chainId === chainId);
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
-      const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
+      const publicRpcs: string[] = lib.PUBLIC_RPCS?.[chainId] ?? [];
+      const config = buildPositionConfig(chain, { ...lib.PUBLIC_RPCS, [chainId]: rpcUrl ? [rpcUrl, ...publicRpcs] : publicRpcs });
       const result = await lib.readAllPositions(owner, config, pools);
       return result.positions ?? result;
     }),
@@ -295,7 +297,8 @@ function createServer(apiKey: string): McpServer {
       const chain = chains.find((c: any) => c.chainId === chainId);
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
       const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-      const positions = await lib.readAllPositions(owner, config, pools);
+      const result = await lib.readAllPositions(owner, config, pools);
+      const positions = result.positions ?? result;
 
       let excludePositions: Array<{
         poolAddress: string;
@@ -350,84 +353,29 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "zap_out_of_lp_position",
-    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position. WORKFLOW: (1) Try list_user_lp_positions to get nftManager, dexName, liquidityKind for the position. (2) Call this tool passing ALL available fields: positionId/tokenId, poolId, sender, and any fields from step 1. If list_user_lp_positions returns empty or fails, still call this tool with positionId + poolId + sender — the server auto-resolves nftManager and dexName. TWO POOL TYPES: (a) Concentrated liquidity (Uniswap V3/V4, PancakeSwap V3/Infinity CL, SushiSwap V3, Algebra): positionId = NFT token ID from zap_into_lp_position receipt. (b) Classic pools (Curve, Balancer, PancakeSwap AMM, Uniswap V2): positionId = LP token address (auto-resolved from poolId if missing). Returns router, callData, value for execution.`,
+    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position. REQUIRED WORKFLOW: First call list_user_lp_positions to read the position, then pass the returned fields (positionId, nftManager, dexName, liquidityKind) here along with sender, poolId, and withdrawals. The API will return an error if required fields are missing. Returns router, callData, value: execute by sending to: router, data: callData, value: value from the user's wallet (see server execution model).`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
-      positionId: z.string().optional().describe("For concentrated liquidity: the NFT token ID. For classic pools (Curve, Balancer, Uniswap V2): the LP token contract address. Get this from list_user_lp_positions. Alias: tokenId."),
-      tokenId: z.string().optional().describe("Alias for positionId — accepts the tokenId field returned by list_user_lp_positions."),
-      poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...'). ALWAYS pass this — it is the same poolId used during zap_into_lp_position. For classic pools this is used to auto-resolve the LP token address if positionId is missing."),
-      nftManager: z.string().optional().describe("NFT position manager contract address. Auto-detected from poolId or sender — only pass if you have it from list_user_lp_positions and did not pass poolId."),
-      dexName: z.string().optional().describe("DEX project name (e.g. 'pancakeswap-v3', 'uniswap-v3'). Auto-detected from poolId — only pass if poolId is not available."),
-      liquidityKind: z.string().optional().describe("Liquidity kind override: UNIV3, UNIV4, ALGEBRA, SLIPSTREAM, PCS_INF_CL, PCS_INF_BIN, CURVE, BAL_V2, BAL_V3, UNIV2, SOLIDLY. Auto-detected — only pass to override."),
+      positionId: z.string().describe("Position identifier from list_user_lp_positions. For CL positions: NFT token ID. For classic pools: LP token contract address."),
+      poolId: z.string().optional().describe("Pool identifier from search_liquidity_pools — pass if available."),
+      nftManager: z.string().optional().describe("NFT position manager contract address from list_user_lp_positions. Required for CL positions (Uniswap V3/V4, PancakeSwap V3/Infinity CL, SushiSwap V3, Algebra)."),
+      dexName: z.string().optional().describe("DEX project name from list_user_lp_positions (e.g. 'Uniswap V3', 'PancakeSwap V3', 'curve-dex')."),
+      liquidityKind: z.string().optional().describe("Liquidity kind from list_user_lp_positions (e.g. UNIV3, UNIV4, ALGEBRA, SLIPSTREAM, PCS_INF_CL, CURVE, UNIV2, SOLIDLY)."),
       withdrawals: z.array(z.object({
         token: z.string().describe("Token address to withdraw to"),
       })).min(1).describe("Tokens to receive after removal"),
-      sender: z.string().optional().describe("Wallet address of the position owner. ALWAYS pass this — it is required for auto-detection of nftManager, dexName, and liquidityKind from on-chain data."),
+      sender: z.string().describe("Wallet address of the position owner."),
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async ({ chainId, positionId, tokenId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
-      let resolvedPositionId = positionId ?? tokenId;
-      if (!resolvedPositionId && !poolId) throw new Error("positionId (or tokenId) is required — or provide poolId for classic pools");
-      // Extract dexName from poolId prefix (e.g. "uni-gql-v3-56-0x..." → "uniswap-v3")
-      if (!dexName && poolId) {
-        const POOL_PREFIX_TO_PROJECT: Record<string, string> = {
-          "uni-gql-v3": "uniswap-v3",
-          "uni-gql-v4": "uniswap-v4",
-          "uni-gql-v2": "uniswap-v2",
-          "sg-sushiswap-v3": "sushiswap-v3",
-          "sg-uniswap-v3": "uniswap-v3",
-          "sushi": "sushiswap-v3",
-          "thena": "thena-fusion",
-          "aero": "aerodrome-slipstream",
-          "curve": "curve-dex",
-        };
-        // Match longest prefix first (sg-sushiswap-v3 before sg-)
-        const sortedPrefixes = Object.keys(POOL_PREFIX_TO_PROJECT).sort((a, b) => b.length - a.length);
-        for (const prefix of sortedPrefixes) {
-          if (poolId.startsWith(prefix + "-")) {
-            dexName = POOL_PREFIX_TO_PROJECT[prefix];
-            break;
-          }
-        }
-        // Also support legacy colon format (e.g. "pancakeswap-v3:0x...")
-        if (!dexName) {
-          const colonIdx = poolId.indexOf(":");
-          if (colonIdx > 0) dexName = poolId.substring(0, colonIdx);
-        }
-        // Fallback: look up the pool in /position-pools (covers PCS, Curve, all classic + CL pools)
-        if (!dexName) {
-          try {
-            const posPools = await fetchPositionPools(chainId, apiKey);
-            const match = posPools.find((p: any) => p.poolId === poolId);
-            if (match?.project) dexName = match.project;
-            if (!resolvedPositionId && match?.lpTokenAddress) resolvedPositionId = match.lpTokenAddress;
-            if (!liquidityKind && match?.liquidityKind) liquidityKind = match.liquidityKind;
-          } catch (_) { /* best-effort */ }
-        }
-      }
-
-      // Resolve missing positionId (LP token address) from /position-pools for classic pools
-      if (!resolvedPositionId && poolId) {
-        try {
-          const posPools = await fetchPositionPools(chainId, apiKey);
-          const match = posPools.find((p: any) => p.poolId === poolId);
-          if (match?.lpTokenAddress) {
-            resolvedPositionId = match.lpTokenAddress;
-            if (!dexName && match.project) dexName = match.project;
-            if (!liquidityKind && match.liquidityKind) liquidityKind = match.liquidityKind;
-          }
-        } catch (_) { /* best-effort */ }
-      }
-
-      // Strategy 1: resolve nftManager from dexName + chain config
+    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
+      // Resolve nftManager from dexName + chain config if not provided
       if (!nftManager && dexName) {
         const chains = await getChainsConfig();
         const chain = chains.find((c: any) => c.chainId === chainId);
         const pc = chain?.positionConfig;
         if (pc) {
-          // 1a. V3-style NftManagers (Uniswap V3, SushiSwap V3, PancakeSwap V3, Aerodrome, etc.)
-          if (!nftManager && pc.v3NftManagers) {
+          if (pc.v3NftManagers) {
             const PROJECT_TO_DEX: Record<string, string> = {
               "uniswap-v3": "Uniswap V3",
               "sushiswap-v3": "SushiSwap V3",
@@ -444,15 +392,12 @@ function createServer(apiKey: string): McpServer {
             );
             if (manager) nftManager = manager.address;
           }
-          // 1b. Uniswap V4 PositionManager
           if (!nftManager && dexName === "uniswap-v4" && pc.v4PositionManager) {
             nftManager = pc.v4PositionManager;
           }
-          // 1c. PancakeSwap Infinity CL PositionManager
           if (!nftManager && dexName === "pancakeswap-infinity-cl" && pc.pcsInfinityCLPositionManager) {
             nftManager = pc.pcsInfinityCLPositionManager;
           }
-          // 1d. Algebra-based DEXes (Camelot, THENA, QuickSwap)
           if (!nftManager && pc.algebraNftManager && pc.algebraDexName) {
             const ALGEBRA_PROJECTS: Record<string, string> = {
               "camelot-v3": "Camelot",
@@ -467,86 +412,11 @@ function createServer(apiKey: string): McpServer {
         }
       }
 
-      // Strategy 2: resolve from user's on-chain positions
-      if (!nftManager && sender) {
-        try {
-          const [lib, chains, pools] = await Promise.all([
-            loadPositionsLib(),
-            getChainsConfig(),
-            fetchPositionPools(chainId, apiKey),
-          ]);
-          const chain = chains.find((c: any) => c.chainId === chainId);
-          if (chain) {
-            const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-            const positions = await lib.readAllPositions(sender, config, pools);
-            const match = Array.isArray(positions)
-              ? positions.find((p: any) => String(p.positionId) === String(resolvedPositionId))
-              : undefined;
-            if (match) {
-              if (match.nftManager) nftManager = match.nftManager;
-              if (!dexName && match.dexName) dexName = match.dexName;
-              if (!liquidityKind && match.liquidityKind) liquidityKind = match.liquidityKind;
-            }
-          }
-        } catch (_) { /* best-effort — fall through to API validation */ }
-      }
-
-      // Strategy 3: brute-force ownerOf(positionId) on all known managers via RPC
-      if (!nftManager && resolvedPositionId) {
-        try {
-          const [lib, chains3] = await Promise.all([loadPositionsLib(), getChainsConfig()]);
-          const chain = chains3.find((c: any) => c.chainId === chainId);
-          const pc = chain?.positionConfig;
-          const rpcUrls: string[] = lib.PUBLIC_RPCS?.[chainId] ?? [];
-          if (pc && rpcUrls.length > 0) {
-            const candidates: Array<{ address: string; dex: string; kind?: string }> = [];
-            if (pc.v4PositionManager) candidates.push({ address: pc.v4PositionManager, dex: "uniswap-v4", kind: "UNIV4" });
-            if (pc.pcsInfinityCLPositionManager) candidates.push({ address: pc.pcsInfinityCLPositionManager, dex: "pancakeswap-infinity-cl", kind: "PCS_INF_CL" });
-            if (pc.algebraNftManager && pc.algebraDexName) {
-              const ALGEBRA_REV: Record<string, string> = { Camelot: "camelot-v3", THENA: "thena-fusion", QuickSwap: "quickswap-v3" };
-              candidates.push({ address: pc.algebraNftManager, dex: ALGEBRA_REV[pc.algebraDexName] ?? pc.algebraDexName, kind: "ALGEBRA" });
-            }
-            if (pc.v3NftManagers) {
-              const DEX_TO_PROJECT: Record<string, string> = {
-                "Uniswap V3": "uniswap-v3", "SushiSwap V3": "sushiswap-v3",
-                "PancakeSwap V3": "pancakeswap-v3", "PancakeSwap V3 (old)": "pancakeswap-v3",
-                "Aerodrome Slipstream": "aerodrome-slipstream",
-              };
-              for (const m of pc.v3NftManagers) {
-                candidates.push({ address: m.address, dex: DEX_TO_PROJECT[m.dexName] ?? m.dexName, kind: m.dexKind ?? "UNIV3" });
-              }
-            }
-            // ownerOf(uint256) selector = 0x6352211e
-            const tokenIdHex = BigInt(resolvedPositionId).toString(16).padStart(64, "0");
-            const callData = "0x6352211e" + tokenIdHex;
-            const rpcUrl = rpcUrls[0];
-            for (const candidate of candidates) {
-              try {
-                const res = await fetch(rpcUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: candidate.address, data: callData }, "latest"] }),
-                });
-                const json = await res.json() as any;
-                if (json.result && json.result.length === 66 && !json.error) {
-                  nftManager = candidate.address;
-                  if (!dexName) dexName = candidate.dex;
-                  if (!liquidityKind) liquidityKind = candidate.kind;
-                  break;
-                }
-              } catch (_) { continue; }
-            }
-          }
-        } catch (_) { /* best-effort */ }
-      }
-
-      const payload: Record<string, unknown> = { chainId, withdrawals };
-      if (resolvedPositionId) payload.positionId = resolvedPositionId;
+      const payload: Record<string, unknown> = { chainId, positionId, withdrawals, sender };
       if (poolId) payload.poolId = poolId;
       if (nftManager) payload.nftManager = nftManager;
       if (dexName) payload.dexName = dexName;
       if (liquidityKind) payload.liquidityKind = liquidityKind;
-      if (sender) payload.sender = sender;
       if (percent) payload.percent = percent;
       if (affiliateCode) payload.affiliateCode = affiliateCode;
 
