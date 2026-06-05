@@ -201,16 +201,36 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning poolId, symbol, fee tier, protocol, APY, TVL (USD), and 24h volume (USD). Required upstream step before zap_into_lp_position.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with sorting and pagination. Required upstream step before zap_into_lp_position.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
+      project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),
+      dexKind: z.string().optional().describe("Filter by DEX kind (e.g. UNIV3_SR02)"),
       tokens: z.string().optional().describe("Comma-separated token addresses to filter pools by"),
+      search: z.string().optional().describe("Search by symbol or project name"),
       poolType: z.enum(["classic", "concentrated"]).optional().describe("Filter by pool type"),
+      stableOnly: z.boolean().optional().describe("Show only stablecoin pairs"),
+      semiStableOnly: z.boolean().optional().describe("Show only pools with exactly one stablecoin"),
+      sortBy: z.enum(["apy", "tvl", "volume1d", "volume7d"]).optional().describe("Sort field (default: tvl)"),
+      sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort direction (default: desc)"),
+      topPerVenue: z.number().int().optional().describe("Limit to top N pools per venue by APY"),
+      page: z.number().int().optional().describe("Page number, 0-based (default: 0)"),
+      pageSize: z.number().int().optional().describe("Results per page, max 200 (default: 50)"),
     },
-    async ({ chainId, tokens, poolType }) => {
+    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, page, pageSize }) => {
       const params: Record<string, string> = { chainId: String(chainId) };
+      if (project) params.project = project;
+      if (dexKind) params.dexKind = dexKind;
       if (tokens) params.tokens = tokens;
+      if (search) params.search = search;
       if (poolType) params.poolType = poolType;
+      if (stableOnly) params.stableOnly = "true";
+      if (semiStableOnly) params.semiStableOnly = "true";
+      if (sortBy) params.sortBy = sortBy;
+      if (sortOrder) params.sortOrder = sortOrder;
+      if (topPerVenue !== undefined) params.topPerVenue = String(topPerVenue);
+      if (page !== undefined) params.page = String(page);
+      if (pageSize !== undefined) params.pageSize = String(pageSize);
       return safeApiCall(() => apiGet("/pools", params));
     },
   );
