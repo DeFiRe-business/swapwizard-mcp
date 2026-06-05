@@ -53,6 +53,8 @@ function makeApiPost(apiKey: string) {
 // ── Positions library (shared, loaded once) ────────────────────────────────
 
 let positionsLib: any = null;
+let chainsCache: any[] | null = null;
+let chainsCacheTime = 0;
 
 async function loadPositionsLib(): Promise<any> {
   if (positionsLib) return positionsLib;
@@ -108,24 +110,10 @@ function buildPositionConfig(chain: any, publicRpcs: Record<number, string[]>): 
 }
 
 function extractProtocols(chain: any): string[] {
-  const pc = chain.positionConfig;
-  const protocols: string[] = [];
-  if (pc?.v3NftManagers && Array.isArray(pc.v3NftManagers)) {
-    for (const m of pc.v3NftManagers) {
-      if (m.dexName) protocols.push(m.dexName);
-    }
-  }
-  if (pc?.algebraNftManager && pc?.algebraDexName) {
-    protocols.push(pc.algebraDexName);
-  }
-  if (pc?.v4PositionManager) protocols.push("uniswap-v4");
-  if (pc?.balancerV2Vault) protocols.push("balancer-v2");
-  if (pc?.pcsInfinityCLPositionManager) protocols.push("pancakeswap-infinity-cl");
-  if (pc?.pcsInfinityBinPositionManager) protocols.push("pancakeswap-infinity-bin");
-  if (pc?.v4ClPoolManager) protocols.push("pancakeswap-v4-cl");
-  if (pc?.aerodromeSugar) protocols.push("aerodrome");
-  if (pc?.thenaPairApi) protocols.push("thena");
-  return protocols;
+  if (!Array.isArray(chain.dexes)) return [];
+  return chain.dexes
+    .filter((d: any) => d.enabled && d.name !== "Split Router")
+    .map((d: any) => d.name);
 }
 
 // ── Tool response helpers ─────────────────────────────────────────────────
@@ -151,7 +139,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.2.0",
+  version: "1.2.1",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -159,9 +147,6 @@ const SERVER_META = {
 function createServer(apiKey: string): McpServer {
   const apiGet = makeApiGet(apiKey);
   const apiPost = makeApiPost(apiKey);
-
-  let chainsCache: any[] | null = null;
-  let chainsCacheTime = 0;
 
   async function getChainsConfig(): Promise<any[]> {
     const now = Date.now();
@@ -249,7 +234,7 @@ function createServer(apiKey: string): McpServer {
       const publicRpcs: string[] = lib.PUBLIC_RPCS?.[chainId] ?? [];
       const config = buildPositionConfig(chain, { ...lib.PUBLIC_RPCS, [chainId]: rpcUrl ? [rpcUrl, ...publicRpcs] : publicRpcs });
       const result = await lib.readAllPositions(owner, config, pools);
-      return result.positions ?? result;
+      return result?.positions ?? result ?? [];
     }),
   );
 
@@ -298,7 +283,7 @@ function createServer(apiKey: string): McpServer {
       if (!chain) throw new Error(`Chain ${chainId} not supported`);
       const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
       const result = await lib.readAllPositions(owner, config, pools);
-      const positions = result.positions ?? result;
+      const positions = result?.positions ?? result ?? [];
 
       let excludePositions: Array<{
         poolAddress: string;
@@ -433,6 +418,8 @@ export { createServer, extractProtocols, buildPositionConfig };
 
 export function _resetForTesting() {
   positionsLib = null;
+  chainsCache = null;
+  chainsCacheTime = 0;
 }
 
 // ── Start (stdio mode) ────────────────────────────────────────────────────

@@ -3,6 +3,18 @@ export const MOCK_CHAINS = [
     chainId: 1,
     name: "Ethereum",
     weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "SushiSwap V3", kind: "UNIV3_LEGACY", enabled: true },
+      { dexIdx: 2, name: "PancakeSwap V3", kind: "UNIV3_LEGACY", enabled: true },
+      { dexIdx: 3, name: "Uniswap V4", kind: "UNIV4", enabled: true },
+      { dexIdx: 4, name: "Curve", kind: "CURVE", enabled: true },
+      { dexIdx: 5, name: "Balancer V2", kind: "BAL_V2", enabled: true },
+      { dexIdx: 6, name: "Fluid", kind: "FLUID", enabled: true },
+      { dexIdx: 7, name: "Uniswap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 8, name: "SushiSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 9, name: "Split Router", kind: "SPLIT", enabled: true },
+    ],
     positionConfig: {
       v3NftManagers: [
         { address: "0xC36442b4a4522E871399CD717aBDD847Ab11FE88", dexName: "uniswap-v3", dexKind: "uniswapV3" },
@@ -17,6 +29,17 @@ export const MOCK_CHAINS = [
     chainId: 56,
     name: "BNB Chain",
     weth: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    dexes: [
+      { dexIdx: 0, name: "PancakeSwap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 2, name: "PancakeSwap Infinity CL", kind: "PCS_INF_CL", enabled: true },
+      { dexIdx: 3, name: "THENA", kind: "ALGEBRA", enabled: true },
+      { dexIdx: 4, name: "Fluid", kind: "FLUID", enabled: true },
+      { dexIdx: 5, name: "PancakeSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 6, name: "SushiSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 7, name: "THENA Classic", kind: "SOLIDLY", enabled: true },
+      { dexIdx: 8, name: "Split Router", kind: "SPLIT", enabled: true },
+    ],
     positionConfig: {
       v3NftManagers: [
         { address: "0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613", dexName: "pancakeswap-v3", dexKind: "uniswapV3" },
@@ -33,6 +56,13 @@ export const MOCK_CHAINS = [
     chainId: 8453,
     name: "Base",
     weth: "0x4200000000000000000000000000000000000006",
+    dexes: [
+      { dexIdx: 0, name: "Aerodrome Slipstream", kind: "AERO_CL", enabled: true },
+      { dexIdx: 1, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 2, name: "Uniswap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 3, name: "Aerodrome Classic", kind: "SOLIDLY", enabled: true },
+      { dexIdx: 4, name: "Split Router", kind: "SPLIT", enabled: true },
+    ],
     positionConfig: {
       v3NftManagers: [
         { address: "0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1", dexName: "uniswap-v3", dexKind: "uniswapV3" },
@@ -44,11 +74,25 @@ export const MOCK_CHAINS = [
     chainId: 137,
     name: "Polygon",
     weth: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "QuickSwap", kind: "ALGEBRA", enabled: true },
+      { dexIdx: 2, name: "Curve", kind: "CURVE", enabled: true },
+      { dexIdx: 3, name: "SushiSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 4, name: "Split Router", kind: "SPLIT", enabled: true },
+    ],
   },
   {
     chainId: 42161,
     name: "Arbitrum",
     weth: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+    dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "Camelot", kind: "ALGEBRA", enabled: true },
+      { dexIdx: 2, name: "Curve", kind: "CURVE", enabled: true },
+      { dexIdx: 3, name: "SushiSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 4, name: "Split Router", kind: "SPLIT", enabled: true },
+    ],
     positionConfig: {
       v3NftManagers: [],
       thenaPairApi: "https://api.thena.fi/pairs",

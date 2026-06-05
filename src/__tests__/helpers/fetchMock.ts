@@ -46,7 +46,7 @@ const defaultRoutes: MockRoute[] = [
       }),
   },
   {
-    pattern: /\/api\/position-pools/,
+    pattern: /\/api\/v2\.0\/position-pools/,
     handler: () => Response.json({ pools: [] }),
   },
 ];

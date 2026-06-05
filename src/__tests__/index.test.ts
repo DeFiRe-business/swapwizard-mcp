@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { server, extractProtocols, buildPositionConfig, _resetForTesting } from "../index.js";
+import { createServer, extractProtocols, buildPositionConfig, _resetForTesting } from "../index.js";
 import { MOCK_CHAINS } from "./fixtures/chains.js";
 import { MOCK_CL_POSITIONS, MOCK_V2_POSITIONS, MOCK_MIXED_POSITIONS, MOCK_EMPTY_POSITIONS } from "./fixtures/positions.js";
 import { MOCK_QUOTE, MOCK_HEALTH, MOCK_POOLS, MOCK_ADD_LIQUIDITY, MOCK_REMOVE_LIQUIDITY } from "./fixtures/quotes.js";
@@ -27,108 +27,53 @@ function errorText(result: any): string {
 // ── Unit: extractProtocols ──────────────────────────────────────────────────
 
 describe("extractProtocols", () => {
-  it("extracts multiple dexNames from v3NftManagers", () => {
-    const chain = { positionConfig: { v3NftManagers: [{ dexName: "uniswap-v3" }, { dexName: "sushi-v3" }] } };
-    expect(extractProtocols(chain)).toEqual(["uniswap-v3", "sushi-v3"]);
+  it("extracts names from dexes array", () => {
+    const chain = { dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "Curve", kind: "CURVE", enabled: true },
+    ] };
+    expect(extractProtocols(chain)).toEqual(["Uniswap V3", "Curve"]);
   });
 
-  it("skips v3NftManagers entries without dexName", () => {
-    const chain = { positionConfig: { v3NftManagers: [{ dexName: "uniswap-v3" }, { address: "0x..." }] } };
-    expect(extractProtocols(chain)).toEqual(["uniswap-v3"]);
+  it("filters out disabled dexes", () => {
+    const chain = { dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "Curve", kind: "CURVE", enabled: false },
+    ] };
+    expect(extractProtocols(chain)).toEqual(["Uniswap V3"]);
   });
 
-  it("adds algebraDexName when both algebraNftManager and algebraDexName present", () => {
-    const chain = { positionConfig: { algebraNftManager: "0x1", algebraDexName: "quickswap-v3" } };
-    expect(extractProtocols(chain)).toEqual(["quickswap-v3"]);
+  it("filters out Split Router", () => {
+    const chain = { dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "Split Router", kind: "SPLIT", enabled: true },
+    ] };
+    expect(extractProtocols(chain)).toEqual(["Uniswap V3"]);
   });
 
-  it("does NOT add algebra when algebraDexName missing", () => {
-    const chain = { positionConfig: { algebraNftManager: "0x1" } };
-    expect(extractProtocols(chain)).toEqual([]);
-  });
-
-  it("does NOT add algebra when algebraNftManager missing", () => {
-    const chain = { positionConfig: { algebraDexName: "quickswap-v3" } };
-    expect(extractProtocols(chain)).toEqual([]);
-  });
-
-  it("adds uniswap-v4 when v4PositionManager present", () => {
-    const chain = { positionConfig: { v4PositionManager: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["uniswap-v4"]);
-  });
-
-  it("adds balancer-v2 when balancerV2Vault present", () => {
-    const chain = { positionConfig: { balancerV2Vault: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["balancer-v2"]);
-  });
-
-  it("adds pancakeswap-infinity-cl", () => {
-    const chain = { positionConfig: { pcsInfinityCLPositionManager: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["pancakeswap-infinity-cl"]);
-  });
-
-  it("adds pancakeswap-infinity-bin", () => {
-    const chain = { positionConfig: { pcsInfinityBinPositionManager: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["pancakeswap-infinity-bin"]);
-  });
-
-  it("adds pancakeswap-v4-cl", () => {
-    const chain = { positionConfig: { v4ClPoolManager: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["pancakeswap-v4-cl"]);
-  });
-
-  it("adds aerodrome", () => {
-    const chain = { positionConfig: { aerodromeSugar: "0x1" } };
-    expect(extractProtocols(chain)).toEqual(["aerodrome"]);
-  });
-
-  it("adds thena", () => {
-    const chain = { positionConfig: { thenaPairApi: "https://api" } };
-    expect(extractProtocols(chain)).toEqual(["thena"]);
-  });
-
-  it("returns all protocols for kitchen-sink chain", () => {
-    const chain = {
-      positionConfig: {
-        v3NftManagers: [{ dexName: "uni-v3" }],
-        algebraNftManager: "0x1", algebraDexName: "algebra",
-        v4PositionManager: "0x1",
-        balancerV2Vault: "0x1",
-        pcsInfinityCLPositionManager: "0x1",
-        pcsInfinityBinPositionManager: "0x1",
-        v4ClPoolManager: "0x1",
-        aerodromeSugar: "0x1",
-        thenaPairApi: "https://api",
-      },
-    };
-    const result = extractProtocols(chain);
-    expect(result).toHaveLength(9);
-    expect(result).toContain("uni-v3");
-    expect(result).toContain("algebra");
-    expect(result).toContain("uniswap-v4");
-    expect(result).toContain("balancer-v2");
-    expect(result).toContain("aerodrome");
-    expect(result).toContain("thena");
-  });
-
-  it("returns empty array when positionConfig missing", () => {
+  it("returns empty array when dexes missing", () => {
     expect(extractProtocols({})).toEqual([]);
   });
 
-  it("returns empty array when positionConfig is null", () => {
-    expect(extractProtocols({ positionConfig: null })).toEqual([]);
+  it("returns empty array when dexes is not an array", () => {
+    expect(extractProtocols({ dexes: "not-array" })).toEqual([]);
   });
 
-  it("returns empty array when positionConfig is empty object", () => {
-    expect(extractProtocols({ positionConfig: {} })).toEqual([]);
-  });
-
-  it("returns empty array when v3NftManagers is empty", () => {
-    expect(extractProtocols({ positionConfig: { v3NftManagers: [] } })).toEqual([]);
-  });
-
-  it("skips v3NftManagers when not an array", () => {
-    expect(extractProtocols({ positionConfig: { v3NftManagers: "not-array" } })).toEqual([]);
+  it("returns all enabled non-split protocols", () => {
+    const chain = { dexes: [
+      { dexIdx: 0, name: "Uniswap V3", kind: "UNIV3_SR02", enabled: true },
+      { dexIdx: 1, name: "SushiSwap V2", kind: "UNIV2", enabled: true },
+      { dexIdx: 2, name: "Curve", kind: "CURVE", enabled: true },
+      { dexIdx: 3, name: "Fluid", kind: "FLUID", enabled: true },
+      { dexIdx: 4, name: "Disabled DEX", kind: "OTHER", enabled: false },
+      { dexIdx: 5, name: "Split Router", kind: "SPLIT", enabled: true },
+    ] };
+    const result = extractProtocols(chain);
+    expect(result).toHaveLength(4);
+    expect(result).toContain("Uniswap V3");
+    expect(result).toContain("SushiSwap V2");
+    expect(result).toContain("Curve");
+    expect(result).toContain("Fluid");
   });
 });
 
@@ -189,9 +134,11 @@ describe("buildPositionConfig", () => {
 
 describe("MCP Integration", () => {
   let mockFetch: ReturnType<typeof setupFetchMock>;
+  let server: ReturnType<typeof createServer>;
 
   beforeAll(async () => {
     mockFetch = setupFetchMock();
+    server = createServer("test-api-key");
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
     client = new Client({ name: "test-client", version: "1.0.0" });
@@ -215,12 +162,12 @@ describe("MCP Integration", () => {
     it("reports correct name and version", () => {
       const info = client.getServerVersion();
       expect(info?.name).toBe("swapwizard");
-      expect(info?.version).toBe("1.1.0");
+      expect(info?.version).toBe("1.2.0");
     });
 
     it("description mentions atomic DeFi execution layer", () => {
       const info = client.getServerVersion();
-      expect(info?.description).toContain("Atomic DeFi execution layer");
+      expect(info?.description).toContain("non-custodial");
     });
 
     it("description mentions API key requirement", () => {
@@ -346,40 +293,53 @@ describe("MCP Integration", () => {
       const data = parseTool(result);
       expect(data.chains).toHaveLength(1);
       const protos = data.chains[0].protocols;
-      expect(protos).toContain("uniswap-v3");
-      expect(protos).toContain("pancakeswap-v3");
-      expect(protos).toContain("uniswap-v4");
-      expect(protos).toContain("balancer-v2");
+      expect(protos).toContain("Uniswap V3");
+      expect(protos).toContain("PancakeSwap V3");
+      expect(protos).toContain("Uniswap V4");
+      expect(protos).toContain("Balancer V2");
+      expect(protos).toContain("Curve");
+      expect(protos).toContain("Fluid");
+      expect(protos).toContain("Uniswap V2");
+      expect(protos).toContain("SushiSwap V2");
+      expect(protos).not.toContain("Split Router");
     });
 
     it("returns correct protocols for BSC (chainId=56)", async () => {
       const result = await client.callTool({ name: "get_supported_dexes", arguments: { chainId: 56 } });
       const data = parseTool(result);
       const protos = data.chains[0].protocols;
-      expect(protos).toContain("pancakeswap-v3");
-      expect(protos).toContain("thena-algebra");
-      expect(protos).toContain("pancakeswap-infinity-cl");
-      expect(protos).toContain("pancakeswap-infinity-bin");
-      expect(protos).toContain("pancakeswap-v4-cl");
+      expect(protos).toContain("PancakeSwap V3");
+      expect(protos).toContain("THENA");
+      expect(protos).toContain("PancakeSwap Infinity CL");
+      expect(protos).toContain("Fluid");
+      expect(protos).toContain("PancakeSwap V2");
+      expect(protos).toContain("THENA Classic");
+      expect(protos).not.toContain("Split Router");
     });
 
     it("returns aerodrome for Base (chainId=8453)", async () => {
       const result = await client.callTool({ name: "get_supported_dexes", arguments: { chainId: 8453 } });
       const data = parseTool(result);
-      expect(data.chains[0].protocols).toContain("aerodrome");
-      expect(data.chains[0].protocols).toContain("uniswap-v3");
+      expect(data.chains[0].protocols).toContain("Aerodrome Slipstream");
+      expect(data.chains[0].protocols).toContain("Aerodrome Classic");
+      expect(data.chains[0].protocols).toContain("Uniswap V3");
     });
 
-    it("returns empty protocols for chain without positionConfig", async () => {
+    it("returns protocols for chain without positionConfig", async () => {
       const result = await client.callTool({ name: "get_supported_dexes", arguments: { chainId: 137 } });
       const data = parseTool(result);
-      expect(data.chains[0].protocols).toEqual([]);
+      const protos = data.chains[0].protocols;
+      expect(protos).toContain("Uniswap V3");
+      expect(protos).toContain("QuickSwap");
+      expect(protos).toContain("Curve");
+      expect(protos).not.toContain("Split Router");
     });
 
-    it("returns thena for Arbitrum (chainId=42161)", async () => {
+    it("returns camelot for Arbitrum (chainId=42161)", async () => {
       const result = await client.callTool({ name: "get_supported_dexes", arguments: { chainId: 42161 } });
       const data = parseTool(result);
-      expect(data.chains[0].protocols).toContain("thena");
+      expect(data.chains[0].protocols).toContain("Camelot");
+      expect(data.chains[0].protocols).toContain("Uniswap V3");
     });
 
     it("errors for unknown chainId", async () => {
@@ -498,7 +458,7 @@ describe("MCP Integration", () => {
 
     it("propagates position-pools fetch error", async () => {
       mockFetch = setupFetchMock([{
-        pattern: /\/api\/position-pools/,
+        pattern: /\/api\/v2\.0\/position-pools/,
         handler: () => new Response("error", { status: 500 }),
       }]);
       const result = await client.callTool({
@@ -787,7 +747,10 @@ describe("MCP Integration", () => {
   // ── zap_out_of_lp_position ──────────────────────────────────────────────
 
   describe("zap_out_of_lp_position", () => {
-    const baseArgs = { chainId: 1, poolId: "uniswap-v3:0xPool1" };
+    const baseArgs = {
+      chainId: 1, positionId: "12345",
+      withdrawals: [{ token: "0xUSDC" }], sender: "0xOwner",
+    };
 
     it("returns removal data", async () => {
       const result = await client.callTool({ name: "zap_out_of_lp_position", arguments: baseArgs });
@@ -798,29 +761,26 @@ describe("MCP Integration", () => {
       await client.callTool({ name: "zap_out_of_lp_position", arguments: baseArgs });
       const body = getPostBody(mockFetch, /\/removeliquidity\/quote/);
       expect(body.chainId).toBe(1);
-      expect(body.poolId).toBe("uniswap-v3:0xPool1");
+      expect(body.positionId).toBe("12345");
+      expect(body.sender).toBe("0xOwner");
     });
 
-    it("includes tokenId when provided", async () => {
-      await client.callTool({ name: "zap_out_of_lp_position", arguments: { ...baseArgs, tokenId: "12345" } });
-      expect(getPostBody(mockFetch, /\/removeliquidity\/quote/).tokenId).toBe("12345");
+    it("includes poolId when provided", async () => {
+      await client.callTool({ name: "zap_out_of_lp_position", arguments: { ...baseArgs, poolId: "uniswap-v3:0xPool1" } });
+      expect(getPostBody(mockFetch, /\/removeliquidity\/quote/).poolId).toBe("uniswap-v3:0xPool1");
     });
 
-    it("includes withdrawals when provided", async () => {
-      await client.callTool({
-        name: "zap_out_of_lp_position",
-        arguments: { ...baseArgs, withdrawals: [{ token: "0xUSDC" }] },
-      });
+    it("includes withdrawals", async () => {
+      await client.callTool({ name: "zap_out_of_lp_position", arguments: baseArgs });
       expect(getPostBody(mockFetch, /\/removeliquidity\/quote/).withdrawals).toEqual([{ token: "0xUSDC" }]);
     });
 
-    it("includes sender and affiliateCode", async () => {
+    it("includes affiliateCode when provided", async () => {
       await client.callTool({
         name: "zap_out_of_lp_position",
-        arguments: { ...baseArgs, sender: "0xOwner", affiliateCode: "0xAff" },
+        arguments: { ...baseArgs, affiliateCode: "0xAff" },
       });
       const body = getPostBody(mockFetch, /\/removeliquidity\/quote/);
-      expect(body.sender).toBe("0xOwner");
       expect(body.affiliateCode).toBe("0xAff");
     });
 
@@ -900,7 +860,7 @@ describe("MCP Integration", () => {
 
     it("propagates position-pools error with prefix", async () => {
       mockFetch = setupFetchMock([{
-        pattern: /\/api\/position-pools/,
+        pattern: /\/api\/v2\.0\/position-pools/,
         handler: () => new Response("pool error", { status: 500 }),
       }]);
       const result = await client.callTool({
