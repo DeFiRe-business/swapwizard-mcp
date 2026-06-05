@@ -109,11 +109,11 @@ function buildPositionConfig(chain: any, publicRpcs: Record<number, string[]>): 
   };
 }
 
-function extractProtocols(chain: any): string[] {
+function extractProtocols(chain: any): { name: string; slug: string | null }[] {
   if (!Array.isArray(chain.dexes)) return [];
   return chain.dexes
     .filter((d: any) => d.enabled && d.name !== "Split Router")
-    .map((d: any) => d.name);
+    .map((d: any) => ({ name: d.name, slug: d.slug ?? null }));
 }
 
 // ── Tool response helpers ─────────────────────────────────────────────────
@@ -139,7 +139,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.2.1",
+  version: "1.3.0",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -175,7 +175,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "get_supported_dexes",
-    `Returns the AMMs / DEX sources SwapWizard routes across per chain. Use to check routing coverage before quoting.`,
+    `Returns the AMMs / DEX sources SwapWizard routes across per chain. Each DEX includes its display name and slug (e.g. "uniswap-v3") — use the slug as the 'project' filter in search_liquidity_pools to filter pools by protocol.`,
     {
       chainId: z.number().int().optional().describe("EVM chain ID to filter results. If omitted, returns protocols for all supported chains."),
     },

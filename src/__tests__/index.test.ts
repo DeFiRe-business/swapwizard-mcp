@@ -162,7 +162,7 @@ describe("MCP Integration", () => {
     it("reports correct name and version", () => {
       const info = client.getServerVersion();
       expect(info?.name).toBe("swapwizard");
-      expect(info?.version).toBe("1.2.0");
+      expect(info?.version).toBe("1.3.0");
     });
 
     it("description mentions atomic DeFi execution layer", () => {
