@@ -3,10 +3,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-import { pathToFileURL } from "url";
 
 const API_URL = (process.env.SWAPWIZARD_API_URL ?? "https://api.swapwizard.xyz").replace(/\/$/, "");
 
@@ -50,64 +46,10 @@ function makeApiPost(apiKey: string) {
   };
 }
 
-// ── Positions library (shared, loaded once) ────────────────────────────────
+// ── Chains cache ──────────────────────────────────────────────────────────
 
-let positionsLib: any = null;
 let chainsCache: any[] | null = null;
 let chainsCacheTime = 0;
-
-async function loadPositionsLib(): Promise<any> {
-  if (positionsLib) return positionsLib;
-  const bundleUrl = "https://swapwizard.xyz/lib/user-positions.mjs";
-  const res = await fetch(bundleUrl);
-  if (!res.ok) throw new Error(`Failed to download positions library: ${res.status}`);
-  const code = await res.text();
-  const tmpPath = join(tmpdir(), `swapwizard-user-positions-${Date.now()}.mjs`);
-  writeFileSync(tmpPath, code, "utf-8");
-  positionsLib = await import(pathToFileURL(tmpPath).href);
-  return positionsLib;
-}
-
-async function fetchPositionPools(chainId: number, apiKey: string): Promise<any[]> {
-  const url = new URL("/api/v2.0/position-pools", API_URL);
-  url.searchParams.set("chainId", String(chainId));
-  const res = await fetch(url.toString(), {
-    headers: { "X-API-Key": apiKey },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`position-pools ${res.status}: ${body}`);
-  }
-  const data = await res.json() as { pools: any[] };
-  return data.pools;
-}
-
-function buildPositionConfig(chain: any, publicRpcs: Record<number, string[]>): any {
-  const pc = chain.positionConfig;
-  return {
-    chainId: chain.chainId,
-    rpcUrls: publicRpcs[chain.chainId] ?? [],
-    weth: chain.weth,
-    v3NftManagers: pc?.v3NftManagers?.map((m: any) => ({
-      address: m.address,
-      dexName: m.dexName,
-      dexKind: m.dexKind,
-      ...(m.factory ? { factory: m.factory } : {}),
-    })) ?? [],
-    ...(pc?.algebraNftManager ? { algebraNftManager: pc.algebraNftManager } : {}),
-    ...(pc?.algebraFactory ? { algebraFactory: pc.algebraFactory } : {}),
-    ...(pc?.algebraDexName ? { algebraDexName: pc.algebraDexName } : {}),
-    ...(pc?.v4PositionManager ? { v4PositionManager: pc.v4PositionManager } : {}),
-    ...(pc?.v4StateView ? { v4StateView: pc.v4StateView } : {}),
-    ...(pc?.balancerV2Vault ? { balancerV2Vault: pc.balancerV2Vault } : {}),
-    ...(pc?.pcsInfinityCLPositionManager ? { pcsInfinityCLPositionManager: pc.pcsInfinityCLPositionManager } : {}),
-    ...(pc?.v4ClPoolManager ? { v4ClPoolManager: pc.v4ClPoolManager } : {}),
-    ...(pc?.pcsInfinityBinPositionManager ? { pcsInfinityBinPositionManager: pc.pcsInfinityBinPositionManager } : {}),
-    ...(pc?.pcsInfinityBinPoolManager ? { pcsInfinityBinPoolManager: pc.pcsInfinityBinPoolManager } : {}),
-    ...(pc?.aerodromeSugar ? { aerodromeSugar: pc.aerodromeSugar } : {}),
-    ...(pc?.thenaPairApi ? { thenaPairApi: pc.thenaPairApi } : {}),
-  };
-}
 
 function extractProtocols(chain: any): { name: string; slug: string | null }[] {
   if (!Array.isArray(chain.dexes)) return [];
@@ -139,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.3.0",
+  version: "1.5.0",
   description: "Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller as follows: (1) if the input token is not the chain's native token, the user must first approve the router address to spend the input token amount (a standard ERC-20 approve); (2) then submit a transaction with to: router, data: callData, value: value, signed and broadcast by the user's own wallet. The agent should present this transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -237,24 +179,20 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "list_user_lp_positions",
-    `Reads all LP positions a wallet holds on a given chain. Each position includes positionId, nftManager, dexName, liquidityKind, token addresses, amounts, fees, in-range status, APR, and USD values. IMPORTANT: Always call this BEFORE zap_out_of_lp_position — pass the returned positionId, nftManager, dexName, and liquidityKind directly to zap_out_of_lp_position.`,
+    `Maps to GET /positions. Reads all LP positions a wallet holds on a given chain by calling the SwapWizard API, which discovers positions across all supported protocols: Uniswap V2/V3/V4, Aerodrome, Thena, SushiSwap, PancakeSwap, Algebra, Balancer, Curve, and all Solidly forks. Each position includes positionId, nftManager, dexName, liquidityKind, token addresses, amounts, fees, in-range status, APR, and USD values. Optionally pass rpcUrl — if it is an Alchemy RPC, the API auto-extracts the key for NFT-based position discovery (faster, finds tokens not indexed by Uniswap). IMPORTANT: Always call this BEFORE zap_out_of_lp_position — pass the returned positionId, nftManager, dexName, and liquidityKind directly to zap_out_of_lp_position.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       owner: z.string().describe("Wallet address to query positions for"),
-      rpcUrl: z.string().optional().describe("Custom RPC endpoint URL. Recommended to avoid throttling from public RPCs, especially on high-traffic chains like BSC or Polygon."),
+      rpcUrl: z.string().optional().describe("Custom RPC endpoint URL. If the URL is from Alchemy, the API auto-extracts the key for accelerated NFT-based position discovery."),
     },
     async ({ chainId, owner, rpcUrl }) => safeApiCall(async () => {
-      const [lib, chains, pools] = await Promise.all([
-        loadPositionsLib(),
-        getChainsConfig(),
-        fetchPositionPools(chainId, apiKey),
-      ]);
-      const chain = chains.find((c: any) => c.chainId === chainId);
-      if (!chain) throw new Error(`Chain ${chainId} not supported`);
-      const publicRpcs: string[] = lib.PUBLIC_RPCS?.[chainId] ?? [];
-      const config = buildPositionConfig(chain, { ...lib.PUBLIC_RPCS, [chainId]: rpcUrl ? [rpcUrl, ...publicRpcs] : publicRpcs });
-      const result = await lib.readAllPositions(owner, config, pools);
-      return result?.positions ?? result ?? [];
+      const params: Record<string, string> = {
+        chainId: String(chainId),
+        owner,
+      };
+      if (rpcUrl) params.rpc_url = rpcUrl;
+      const data = await apiGet("/positions", params) as { positions: any[]; warnings?: string[] };
+      return data.positions ?? [];
     }),
   );
 
@@ -291,19 +229,13 @@ function createServer(apiKey: string): McpServer {
       amount: z.string().describe("Amount as stringified uint256 in token decimals"),
       slippageBps: z.number().int().min(0).max(10000).optional().describe("Slippage tolerance in basis points (default: 100 = 1%)"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
+      rpcUrl: z.string().optional().describe("Custom RPC endpoint URL for position discovery."),
     },
-    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode }) => safeApiCall(async () => {
-      const [lib, chains, pools] = await Promise.all([
-        loadPositionsLib(),
-        getChainsConfig(),
-        fetchPositionPools(chainId, apiKey),
-      ]);
-
-      const chain = chains.find((c: any) => c.chainId === chainId);
-      if (!chain) throw new Error(`Chain ${chainId} not supported`);
-      const config = buildPositionConfig(chain, lib.PUBLIC_RPCS);
-      const result = await lib.readAllPositions(owner, config, pools);
-      const positions = result?.positions ?? result ?? [];
+    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode, rpcUrl }) => safeApiCall(async () => {
+      const posParams: Record<string, string> = { chainId: String(chainId), owner };
+      if (rpcUrl) posParams.rpc_url = rpcUrl;
+      const posData = await apiGet("/positions", posParams) as { positions: any[] };
+      const positions = posData.positions ?? [];
 
       let excludePositions: Array<{
         poolAddress: string;
@@ -312,7 +244,7 @@ function createServer(apiKey: string): McpServer {
         tickUpper: number;
       }> | undefined;
 
-      if (Array.isArray(positions) && positions.length > 0) {
+      if (positions.length > 0) {
         const mapped = positions
           .filter((p: any) =>
             p.poolAddress && p.liquidity &&
@@ -374,7 +306,6 @@ function createServer(apiKey: string): McpServer {
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
     async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
-      // Resolve nftManager from dexName + chain config if not provided
       if (!nftManager && dexName) {
         const chains = await getChainsConfig();
         const chain = chains.find((c: any) => c.chainId === chainId);
@@ -434,10 +365,9 @@ function createServer(apiKey: string): McpServer {
 
 // ── Exports ────────────────────────────────────────────────────────────────
 
-export { createServer, extractProtocols, buildPositionConfig };
+export { createServer, extractProtocols };
 
 export function _resetForTesting() {
-  positionsLib = null;
   chainsCache = null;
   chainsCacheTime = 0;
 }
