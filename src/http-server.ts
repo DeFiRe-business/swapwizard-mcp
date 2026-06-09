@@ -11,11 +11,14 @@ const PORT = parseInt(process.env.MCP_PORT ?? "3902", 10);
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
 const AUTH_FREE_METHODS = new Set(["initialize", "notifications/initialized", "tools/list"]);
+const AUTH_FREE_TOOLS = new Set(["get_setup_guide"]);
 
 app.post("/mcp", async (req, res) => {
   const body = req.body;
   const method = body?.method as string | undefined;
-  const isAuthFree = method != null && AUTH_FREE_METHODS.has(method);
+  const toolName = method === "tools/call" ? (body?.params?.name as string | undefined) : undefined;
+  const isAuthFree = (method != null && AUTH_FREE_METHODS.has(method))
+    || (toolName != null && AUTH_FREE_TOOLS.has(toolName));
 
   const apiKey = (req.headers["x-api-key"] as string | undefined)
     ?? (req.query?.apikey as string | undefined);
