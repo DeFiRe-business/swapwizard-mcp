@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.6.2] - 2026-06-09
+
+### Improved
+- **MCP instructions** — added `streamable-http` transport type guidance for `.mcp.json` configuration. Clarified that zap in accepts any input token and zap out accepts any output token (SwapWizard handles all intermediate swaps automatically).
+
 ## [1.6.1] - 2026-06-09
 
 ### Added

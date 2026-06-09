@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.6.1",
+  version: "1.6.2",
   description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -92,6 +92,7 @@ const SERVER_INSTRUCTIONS = `
 - **SwapWizard API key** — sign in with your wallet at https://swapwizard.xyz/integrators (SIWE, no gas cost).
 - **Alchemy RPC URL** — pass as rpcUrl to list_user_lp_positions and get_clean_quote. Without it, position discovery is slower and recently created positions may not appear.
 - **Private key or wallet signer** — required to sign and broadcast on-chain transactions (approvals and the main tx). SwapWizard never signs or broadcasts on your behalf.
+- **MCP client config** — when creating a \`.mcp.json\` file for the remote endpoint, set \`"type": "streamable-http"\` and \`"url": "https://mcp.swapwizard.xyz/mcp"\` with an \`"X-API-Key"\` header.
 
 ## poolId rule
 
@@ -101,8 +102,8 @@ const SERVER_INSTRUCTIONS = `
 ## Operational flows
 
 - **Swap**: get_supported_chains → get_swap_quote → approve router → wait for on-chain confirmation → get_swap_quote again (fresh quote) → send tx to router.
-- **Zap in**: search_liquidity_pools → zap_into_lp_position → approve router → wait for on-chain confirmation → zap_into_lp_position again (fresh quote) → send tx to router.
-- **Zap out**: list_user_lp_positions → zap_out_of_lp_position → setApprovalForAll(router, true) on the nftManager → wait for on-chain confirmation → zap_out_of_lp_position again (fresh quote) → send tx to router.
+- **Zap in**: search_liquidity_pools → zap_into_lp_position → approve router → wait for on-chain confirmation → zap_into_lp_position again (fresh quote) → send tx to router. The \`deposits\` array accepts ANY token — it does not have to be one of the pool's tokens. SwapWizard handles all intermediate swaps, the LP mint, and price-range setup in a single transaction.
+- **Zap out**: list_user_lp_positions → zap_out_of_lp_position → setApprovalForAll(router, true) on the nftManager → wait for on-chain confirmation → zap_out_of_lp_position again (fresh quote) → send tx to router. The \`withdrawals\` array accepts ANY output token — you can exit into any token, not just the pool's underlying tokens. SwapWizard handles the LP burn, fee collection, and intermediate swaps in a single transaction.
 - **Analyze**: search_liquidity_pools → analyze_pool with the numeric id.
 
 ## Transaction execution
