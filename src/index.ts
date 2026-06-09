@@ -450,8 +450,7 @@ export function _resetForTesting() {
 if (!process.env.VITEST && !process.env.MCP_HTTP) {
   const apiKey = process.env.SWAPWIZARD_API_KEY ?? "";
   if (!apiKey) {
-    console.error("SWAPWIZARD_API_KEY environment variable is required");
-    process.exit(1);
+    console.error("Warning: SWAPWIZARD_API_KEY not set — tool calls that hit the API will fail.");
   }
   const server = createServer(apiKey);
   const transport = new StdioServerTransport();
