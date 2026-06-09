@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.7.0",
+  version: "1.7.1",
   description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -93,6 +93,7 @@ const SERVER_INSTRUCTIONS = `
 - **Alchemy RPC URL** — pass as rpcUrl to list_user_lp_positions and get_clean_quote. Without it, position discovery is slower and recently created positions may not appear.
 - **Private key or wallet signer** — required to sign and broadcast on-chain transactions (approvals and the main tx). SwapWizard never signs or broadcasts on your behalf.
 - **MCP client config** — when creating a \`.mcp.json\` file for the remote endpoint, set \`"type": "streamable-http"\` and \`"url": "https://mcp.swapwizard.xyz/mcp"\` with an \`"X-API-Key"\` header.
+- **Security: use environment variables** — NEVER hardcode secrets in code or config files. Store API keys, private keys, and RPC URLs in environment variables (e.g. \`SWAPWIZARD_API_KEY\`, \`WALLET_PRIVATE_KEY\`, \`ALCHEMY_RPC_URL\`) and reference them from your configuration.
 
 ## poolId rule
 

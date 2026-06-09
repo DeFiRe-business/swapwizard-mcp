@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.7.1] - 2026-06-09
+
+### Improved
+- **MCP instructions & get_setup_guide** — added security recommendation to store API keys, private keys, and RPC URLs in environment variables (`SWAPWIZARD_API_KEY`, `WALLET_PRIVATE_KEY`, `ALCHEMY_RPC_URL`) instead of hardcoding them.
+
 ## [1.7.0] - 2026-06-09
 
 ### Added
