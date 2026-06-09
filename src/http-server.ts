@@ -10,24 +10,31 @@ const PORT = parseInt(process.env.MCP_PORT ?? "3902", 10);
 
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
+const AUTH_FREE_METHODS = new Set(["initialize", "notifications/initialized", "tools/list"]);
+
 app.post("/mcp", async (req, res) => {
+  const body = req.body;
+  const method = body?.method as string | undefined;
+  const isAuthFree = method != null && AUTH_FREE_METHODS.has(method);
+
   const apiKey = (req.headers["x-api-key"] as string | undefined)
     ?? (req.query?.apikey as string | undefined);
-  if (!apiKey) {
+
+  if (!apiKey && !isAuthFree) {
     res.status(401).json({
       jsonrpc: "2.0",
       error: { code: -32001, message: "Missing API key. Pass via X-API-Key header or ?apikey= query parameter." },
-      id: null,
+      id: body?.id ?? null,
     });
     return;
   }
 
-  const server = createServer(apiKey);
+  const server = createServer(apiKey ?? "");
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
   await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
+  await transport.handleRequest(req, res, body);
   res.on("close", () => {
     transport.close();
     server.close();
