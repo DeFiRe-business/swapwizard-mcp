@@ -81,10 +81,43 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.6.0",
-  description: `Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller following this STRICT sequential flow: (1) APPROVE — if the input token is not the chain's native coin, send an ERC-20 approve tx granting the router address the required allowance. For zap_out of NFT-based positions, you MUST call setApprovalForAll(router, true) on the nftManager contract (NOT approve(router, tokenId) — most position managers including PCS Infinity CL, Uniswap V4, and Algebra only check operator approval). For PCS Infinity BIN positions, call approveForAll(router, true) on the nftManager instead. For classic LP pools (Curve, Balancer, Uniswap V2, Solidly), approve the LP token as a standard ERC-20. (2) WAIT FOR CONFIRMATION — you MUST wait for the approve transaction to be confirmed on-chain (included in a block) before proceeding. Sending the next transaction before the approve is mined will cause a nonce collision or "replacement transaction underpriced" error. (3) FETCH A FRESH QUOTE — quotes contain a deadline and reflect current pool state. After the approve is confirmed, call the quote tool again to get fresh callData. Do NOT reuse a stale quote. (4) SEND THE MAIN TX — submit the transaction with to: router, data: callData, value: value. Wait for confirmation. The agent should present each transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.`,
+  version: "1.6.1",
+  description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
+
+const SERVER_INSTRUCTIONS = `
+## Setup requirements
+
+- **SwapWizard API key** — sign in with your wallet at https://swapwizard.xyz/integrators (SIWE, no gas cost).
+- **Alchemy RPC URL** — pass as rpcUrl to list_user_lp_positions and get_clean_quote. Without it, position discovery is slower and recently created positions may not appear.
+- **Private key or wallet signer** — required to sign and broadcast on-chain transactions (approvals and the main tx). SwapWizard never signs or broadcasts on your behalf.
+
+## poolId rule
+
+- search_liquidity_pools returns a \`poolId\` field (string) → pass it **as-is** to zap_into_lp_position and zap_out_of_lp_position. Do NOT construct, modify, or guess poolId values.
+- search_liquidity_pools returns an \`id\` field (number) → use it **only** for analyze_pool.
+
+## Operational flows
+
+- **Swap**: get_supported_chains → get_swap_quote → approve router → wait for on-chain confirmation → get_swap_quote again (fresh quote) → send tx to router.
+- **Zap in**: search_liquidity_pools → zap_into_lp_position → approve router → wait for on-chain confirmation → zap_into_lp_position again (fresh quote) → send tx to router.
+- **Zap out**: list_user_lp_positions → zap_out_of_lp_position → setApprovalForAll(router, true) on the nftManager → wait for on-chain confirmation → zap_out_of_lp_position again (fresh quote) → send tx to router.
+- **Analyze**: search_liquidity_pools → analyze_pool with the numeric id.
+
+## Transaction execution
+
+- Quote tools return \`router\`, \`callData\`, and \`value\`.
+- Send the transaction to the \`router\` contract address with \`data: callData\` and \`value: value\`. This requires a private key or wallet signer.
+- ALWAYS fetch a fresh quote after the approval is confirmed — the previous quote expires and its callData becomes stale.
+
+## Approval rules
+
+- **ERC-20 tokens** (swaps, zap in): call \`approve(router, amount)\` on the input token contract.
+- **NFT-based positions** (zap out): call \`setApprovalForAll(router, true)\` on the \`nftManager\` contract. Do NOT use \`approve(router, tokenId)\` — most position managers only check operator approval.
+- **PCS Infinity BIN positions**: call \`approveForAll(router, true)\` on the \`nftManager\`.
+- **Classic LP pools** (Curve, Balancer, Uniswap V2, Solidly): approve the LP token as a standard ERC-20.
+`.trim();
 
 function createServer(apiKey: string): McpServer {
   const apiGet = makeApiGet(apiKey);
@@ -99,7 +132,7 @@ function createServer(apiKey: string): McpServer {
     return data;
   }
 
-  const server = new McpServer(SERVER_META);
+  const server = new McpServer(SERVER_META, { instructions: SERVER_INSTRUCTIONS });
 
   server.tool(
     "get_supported_chains",

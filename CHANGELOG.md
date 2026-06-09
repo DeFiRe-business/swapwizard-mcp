@@ -2,6 +2,14 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.6.1] - 2026-06-09
+
+### Added
+- **MCP `instructions`** — operational guide sent to the agent on connection: setup requirements (API key, Alchemy RPC URL, private key/signer), poolId rule, step-by-step flows (swap, zap in, zap out, analyze), transaction execution details, and approval rules.
+
+### Changed
+- `description` in server metadata trimmed to a one-liner. All operational guidance moved to `instructions` (MCP protocol field).
+
 ## [1.6.0] - 2026-06-09
 
 ### Added
