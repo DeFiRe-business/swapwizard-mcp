@@ -2,6 +2,15 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.7.0] - 2026-06-09
+
+### Added
+- **`get_setup_guide` tool** — returns the complete setup and usage guide (API key, Alchemy RPC, private key, poolId rules, flows, tx execution, approvals). Call this first before using any other tool.
+
+### Improved
+- **Tool descriptions reinforced** — `search_liquidity_pools` now explicitly states the poolId rule (pass as-is, do not construct). `zap_into_lp_position` clarifies deposits accept ANY token. `zap_out_of_lp_position` clarifies withdrawals accept ANY output token. All quote tools now mention that sending the tx requires a private key or wallet signer.
+- Tool count: 11 (was 10).
+
 ## [1.6.2] - 2026-06-09
 
 ### Improved
