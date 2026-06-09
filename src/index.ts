@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.8.1",
+  version: "1.8.2",
   description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };

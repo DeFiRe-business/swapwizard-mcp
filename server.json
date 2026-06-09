@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.DeFiRe-business/swapwizard-mcp",
+  "description": "DeFi execution layer for AI agents — swap, zap in/out of LP, route across AMMs on 5 EVM chains.",
+  "version": "1.8.2",
+  "title": "SwapWizard",
+  "websiteUrl": "https://swapwizard.xyz",
+  "repository": {
+    "url": "https://github.com/DeFiRe-business/swapwizard-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@swapwizard/mcp-server",
+      "version": "1.8.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SWAPWIZARD_API_KEY",
+          "description": "API key from https://swapwizard.xyz/integrators",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.swapwizard.xyz/mcp"
+    }
+  ]
+}
