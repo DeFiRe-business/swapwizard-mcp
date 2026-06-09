@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.8.0",
+  version: "1.8.1",
   description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -205,7 +205,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, trending status, and free-text search, with sorting and pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),

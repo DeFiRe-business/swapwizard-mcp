@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.1] - 2026-06-09
+
+### Improved
+- **`search_liquidity_pools` description** — key parameters (`trending`, `sortBy`, `sortOrder`, `topPerVenue`) now called out explicitly in the tool description so agents discover them without inspecting the schema.
+
 ## [1.8.0] - 2026-06-09
 
 ### Added
