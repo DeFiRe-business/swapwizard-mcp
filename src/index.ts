@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.7.1",
+  version: "1.8.0",
   description: "Non-custodial DeFi execution layer for AI agents — swap, zap in/out of LP positions, and analyze pools across 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -125,6 +125,23 @@ function createServer(apiKey: string): McpServer {
   const apiGet = makeApiGet(apiKey);
   const apiPost = makeApiPost(apiKey);
 
+  let guideRead = false;
+
+  function withGuide<T extends { content: Array<{ type: "text"; text: string }>; isError?: true }>(result: T): T {
+    if (guideRead) return result;
+    guideRead = true;
+    const guideBlock = {
+      type: "text" as const,
+      text: `⚠️ SETUP GUIDE — read this before proceeding:\n\n${SERVER_INSTRUCTIONS}\n\n--- End of guide. Tool response follows below. ---\n`,
+    };
+    return { ...result, content: [guideBlock, ...result.content] } as T;
+  }
+
+  async function guidedApiCall(fn: () => Promise<unknown>) {
+    const result = await safeApiCall(fn);
+    return withGuide(result);
+  }
+
   async function getChainsConfig(): Promise<any[]> {
     const now = Date.now();
     if (chainsCache && now - chainsCacheTime < 300_000) return chainsCache;
@@ -140,21 +157,24 @@ function createServer(apiKey: string): McpServer {
     "get_setup_guide",
     `Returns the complete setup and usage guide for SwapWizard. Call this FIRST before using any other tool. Covers: required configuration (API key, Alchemy RPC URL, private key), how to use poolId correctly, step-by-step operational flows for swap/zap in/zap out/analyze, transaction execution details, and approval rules.`,
     {},
-    async () => jsonResult({ guide: SERVER_INSTRUCTIONS }),
+    async () => {
+      guideRead = true;
+      return jsonResult({ guide: SERVER_INSTRUCTIONS });
+    },
   );
 
   server.tool(
     "get_supported_chains",
     `Maps to GET /chains. Lists supported EVM chains with chain IDs and native gas tokens: Ethereum, Arbitrum, Base, Polygon, BNB Chain.`,
     {},
-    async () => safeApiCall(() => apiGet("/chains")),
+    async () => guidedApiCall(() => apiGet("/chains")),
   );
 
   server.tool(
     "check_api_health",
     `Maps to GET /health. Returns service availability. Use to confirm the API is responsive before attempting operations.`,
     {},
-    async () => safeApiCall(() => apiGet("/health")),
+    async () => guidedApiCall(() => apiGet("/health")),
   );
 
   server.tool(
@@ -163,7 +183,7 @@ function createServer(apiKey: string): McpServer {
     {
       chainId: z.number().int().optional().describe("EVM chain ID to filter results. If omitted, returns protocols for all supported chains."),
     },
-    async ({ chainId }) => safeApiCall(async () => {
+    async ({ chainId }) => guidedApiCall(async () => {
       const chains = await getChainsConfig();
       const filtered = chainId != null
         ? chains.filter((c: any) => c.chainId === chainId)
@@ -217,7 +237,7 @@ function createServer(apiKey: string): McpServer {
       if (topPerVenue !== undefined) params.topPerVenue = String(topPerVenue);
       if (page !== undefined) params.page = String(page);
       if (pageSize !== undefined) params.pageSize = String(pageSize);
-      return safeApiCall(() => apiGet("/pools", params));
+      return guidedApiCall(() => apiGet("/pools", params));
     },
   );
 
@@ -227,7 +247,7 @@ function createServer(apiKey: string): McpServer {
     {
       id: z.number().int().describe("Pool numeric ID (from the id field in search_liquidity_pools response)"),
     },
-    async ({ id }) => safeApiCall(() => apiGet(`/pools/analyze/${id}`)),
+    async ({ id }) => guidedApiCall(() => apiGet(`/pools/analyze/${id}`)),
   );
 
   server.tool(
@@ -238,7 +258,7 @@ function createServer(apiKey: string): McpServer {
       owner: z.string().describe("Wallet address to query positions for"),
       rpcUrl: z.string().optional().describe("Custom RPC endpoint URL. If the URL is from Alchemy, the API auto-extracts the key for accelerated NFT-based position discovery."),
     },
-    async ({ chainId, owner, rpcUrl }) => safeApiCall(async () => {
+    async ({ chainId, owner, rpcUrl }) => guidedApiCall(async () => {
       const params: Record<string, string> = {
         chainId: String(chainId),
         owner,
@@ -267,7 +287,7 @@ function createServer(apiKey: string): McpServer {
         tickUpper: z.number().int().describe("Upper tick bound"),
       })).optional().describe("Positions to subtract from pool state during simulation — for a clean quote that excludes self-impact. Get these from list_user_lp_positions."),
     },
-    async (params) => safeApiCall(() => apiPost("/quote", params)),
+    async (params) => guidedApiCall(() => apiPost("/quote", params)),
   );
 
   server.tool(
@@ -284,7 +304,7 @@ function createServer(apiKey: string): McpServer {
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
       rpcUrl: z.string().optional().describe("Custom RPC endpoint URL for position discovery."),
     },
-    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode, rpcUrl }) => safeApiCall(async () => {
+    async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode, rpcUrl }) => guidedApiCall(async () => {
       const posParams: Record<string, string> = { chainId: String(chainId), owner };
       if (rpcUrl) posParams.rpc_url = rpcUrl;
       const posData = await apiGet("/positions", posParams) as { positions: any[] };
@@ -338,7 +358,7 @@ function createServer(apiKey: string): McpServer {
       tickUpper: z.number().int().optional().describe("Custom upper tick for concentrated liquidity"),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async (params) => safeApiCall(() => apiPost("/addliquidity/quote", params)),
+    async (params) => guidedApiCall(() => apiPost("/addliquidity/quote", params)),
   );
 
   server.tool(
@@ -358,7 +378,7 @@ function createServer(apiKey: string): McpServer {
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100). For classic LP pools (UniV2, Solidly, Curve, Balancer) use 99 instead of 100 to avoid reverts from LP balance race conditions between RPC nodes."),
       affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
     },
-    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => safeApiCall(async () => {
+    async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => guidedApiCall(async () => {
       if (!nftManager && dexName) {
         const chains = await getChainsConfig();
         const chain = chains.find((c: any) => c.chainId === chainId);

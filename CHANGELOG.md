@@ -2,6 +2,14 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.0] - 2026-06-09
+
+### Added
+- **Forced guide injection** — if an agent calls any tool without having called `get_setup_guide` first, the full setup guide is automatically prepended to the first tool response. Ensures every agent receives configuration and usage instructions regardless of whether it proactively reads the guide.
+
+### Removed
+- Test suite (outdated and unmaintained).
+
 ## [1.7.1] - 2026-06-09
 
 ### Improved
