@@ -2,6 +2,16 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.6.0] - 2026-06-09
+
+### Added
+- **`analyze_pool` tool** — returns real-time momentum data for a pool from GeckoTerminal: multi-timeframe volume (5m–6h), price changes (5m–24h), buy/sell counts, unique traders, and reserve in USD. Maps to `GET /pools/analyze/:id`.
+- **`trending` filter** in `search_liquidity_pools` — pass `trending: true` to return only pools currently trending on GeckoTerminal.
+
+### Changed
+- `search_liquidity_pools` response now includes a numeric `id` field for each pool, used as input to `analyze_pool`.
+- Tool count: 10 (was 9).
+
 ## [1.1.7] - 2026-05-30
 
 ### Fixed

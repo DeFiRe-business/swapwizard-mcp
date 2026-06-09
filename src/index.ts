@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.5.2",
+  version: "1.6.0",
   description: `Execution model: SwapWizard is non-custodial and returns signable transaction data — it never signs or broadcasts. Tools that return router, callData, and value (get_swap_quote, get_clean_quote, zap_into_lp_position, zap_out_of_lp_position) are completed by the caller following this STRICT sequential flow: (1) APPROVE — if the input token is not the chain's native coin, send an ERC-20 approve tx granting the router address the required allowance. For zap_out of NFT-based positions, you MUST call setApprovalForAll(router, true) on the nftManager contract (NOT approve(router, tokenId) — most position managers including PCS Infinity CL, Uniswap V4, and Algebra only check operator approval). For PCS Infinity BIN positions, call approveForAll(router, true) on the nftManager instead. For classic LP pools (Curve, Balancer, Uniswap V2, Solidly), approve the LP token as a standard ERC-20. (2) WAIT FOR CONFIRMATION — you MUST wait for the approve transaction to be confirmed on-chain (included in a block) before proceeding. Sending the next transaction before the approve is mined will cause a nonce collision or "replacement transaction underpriced" error. (3) FETCH A FRESH QUOTE — quotes contain a deadline and reflect current pool state. After the approve is confirmed, call the quote tool again to get fresh callData. Do NOT reuse a stale quote. (4) SEND THE MAIN TX — submit the transaction with to: router, data: callData, value: value. Wait for confirmation. The agent should present each transaction to the user for signing, not attempt to hold keys or sign on the user's behalf. The API key authenticates access to the quoting service only; it never controls user funds.`,
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -143,7 +143,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with sorting and pagination. Required upstream step before zap_into_lp_position.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, trending status, and free-text search, with sorting and pagination. Required upstream step before zap_into_lp_position. Use the numeric id field from the response to call analyze_pool.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),
@@ -156,10 +156,11 @@ function createServer(apiKey: string): McpServer {
       sortBy: z.enum(["apy", "tvl", "volume1d", "volume7d"]).optional().describe("Sort field (default: tvl)"),
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort direction (default: desc)"),
       topPerVenue: z.number().int().optional().describe("Limit to top N pools per venue by APY"),
+      trending: z.boolean().optional().describe("If true, return only pools currently trending on GeckoTerminal"),
       page: z.number().int().optional().describe("Page number, 0-based (default: 0)"),
       pageSize: z.number().int().optional().describe("Results per page, max 200 (default: 50)"),
     },
-    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, page, pageSize }) => {
+    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, trending, page, pageSize }) => {
       const params: Record<string, string> = { chainId: String(chainId) };
       if (project) params.project = project;
       if (dexKind) params.dexKind = dexKind;
@@ -168,6 +169,7 @@ function createServer(apiKey: string): McpServer {
       if (poolType) params.poolType = poolType;
       if (stableOnly) params.stableOnly = "true";
       if (semiStableOnly) params.semiStableOnly = "true";
+      if (trending) params.trending = "true";
       if (sortBy) params.sortBy = sortBy;
       if (sortOrder) params.sortOrder = sortOrder;
       if (topPerVenue !== undefined) params.topPerVenue = String(topPerVenue);
@@ -175,6 +177,15 @@ function createServer(apiKey: string): McpServer {
       if (pageSize !== undefined) params.pageSize = String(pageSize);
       return safeApiCall(() => apiGet("/pools", params));
     },
+  );
+
+  server.tool(
+    "analyze_pool",
+    `Maps to GET /pools/analyze/:id. Returns real-time momentum data for a specific pool from GeckoTerminal: multi-timeframe volume (5m, 15m, 30m, 1h, 6h), price changes (5m–24h), buy/sell transaction counts, unique traders (24h), and reserve in USD. Data is cached for 10 minutes; stale entries are refreshed on-demand. Use the numeric id field returned by search_liquidity_pools.`,
+    {
+      id: z.number().int().describe("Pool numeric ID (from the id field in search_liquidity_pools response)"),
+    },
+    async ({ id }) => safeApiCall(() => apiGet(`/pools/analyze/${id}`)),
   );
 
   server.tool(

@@ -162,7 +162,7 @@ describe("MCP Integration", () => {
     it("reports correct name and version", () => {
       const info = client.getServerVersion();
       expect(info?.name).toBe("swapwizard");
-      expect(info?.version).toBe("1.3.0");
+      expect(info?.version).toBe("1.6.0");
     });
 
     it("description mentions atomic DeFi execution layer", () => {
@@ -175,9 +175,9 @@ describe("MCP Integration", () => {
       expect(info?.description).toContain("API key");
     });
 
-    it("lists exactly 9 tools", async () => {
+    it("lists exactly 10 tools", async () => {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(9);
+      expect(tools).toHaveLength(10);
     });
 
     it("lists all expected tool names", async () => {
@@ -187,6 +187,7 @@ describe("MCP Integration", () => {
       expect(names).toContain("check_api_health");
       expect(names).toContain("get_supported_dexes");
       expect(names).toContain("search_liquidity_pools");
+      expect(names).toContain("analyze_pool");
       expect(names).toContain("list_user_lp_positions");
       expect(names).toContain("get_swap_quote");
       expect(names).toContain("get_clean_quote");
