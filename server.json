@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.DeFiRe-business/swapwizard-mcp",
-  "description": "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions, routing across AMMs, and pool discovery and analysis on 5 EVM chains.",
+  "description": "Non-custodial DeFi layer for AI agents: swaps, LP zaps, AMM routing, pool analytics on 5 EVM chains",
   "version": "1.8.3",
   "title": "SwapWizard",
   "websiteUrl": "https://swapwizard.xyz",
