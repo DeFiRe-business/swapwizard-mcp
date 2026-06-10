@@ -1,7 +1,7 @@
 {
   "name": "@swapwizard/mcp-server",
-  "version": "1.8.2",
-  "description": "Model Context Protocol server for the SwapWizard DeFi API — swap quotes, liquidity management, and pool discovery for AI agents.",
+  "version": "1.8.3",
+  "description": "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions, routing across AMMs, and pool discovery and analysis on 5 EVM chains.",
   "mcpName": "io.github.DeFiRe-business/swapwizard-mcp",
   "type": "module",
   "bin": {
