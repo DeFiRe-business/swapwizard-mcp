@@ -8,6 +8,12 @@ import { createServer } from "./index.js";
 
 const PORT = parseInt(process.env.MCP_PORT ?? "3902", 10);
 const SLACK_WEBHOOK_URL = process.env.SLACK_MCP_WEBHOOK_URL ?? "";
+const SLACK_CLIENT_BLACKLIST = new Set(
+  (process.env.SLACK_MCP_CLIENT_BLACKLIST ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0),
+);
 
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
@@ -27,6 +33,11 @@ async function notifyInitializeToSlack(req: { headers: Record<string, unknown>; 
   }
   const params = body?.params ?? {};
   const clientInfo = params.clientInfo ?? {};
+  const clientName = String(clientInfo.name ?? "").toLowerCase();
+  if (SLACK_CLIENT_BLACKLIST.has(clientName)) {
+    console.log(`[slack] initialize de '${clientName}' omitido (en SLACK_MCP_CLIENT_BLACKLIST)`);
+    return;
+  }
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip ?? "unknown";
   const userAgent = (req.headers["user-agent"] as string | undefined) ?? "unknown";
 
