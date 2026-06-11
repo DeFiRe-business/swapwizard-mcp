@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.8.6",
+  version: "1.8.7",
   description: "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions including concentrated liquidity (Uniswap V3/V4, Aerodrome Slipstream, Algebra, PancakeSwap Infinity CL) with custom price-range management, routing across 22 AMMs, and pool discovery and analysis on 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -205,7 +205,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal, optionally with \`timeframe\` ("5m", "1h", "6h", "24h") to select the trending ranking window — default is 5m. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal, optionally with \`timeframe\` ("5m", "1h", "6h", "24h") to select the trending ranking window — default is 5m. Trending results include \`feeAprEstimate\`: fee APR (%) annualized from the selected timeframe's volume window over the pool reserve (null outside trending mode or when the fee tier is unknown). NOTE: \`feeAprEstimate\` extrapolates a short window to a year — for short timeframes on hot pools it can be extreme and short-lived; the \`apy\` field is the stable 24h-based metric. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),
@@ -219,7 +219,7 @@ function createServer(apiKey: string): McpServer {
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort direction (default: desc)"),
       topPerVenue: z.number().int().optional().describe("Limit to top N pools per venue by APY"),
       trending: z.boolean().optional().describe("If true, return only pools currently trending on GeckoTerminal"),
-      timeframe: z.enum(["5m", "1h", "6h", "24h"]).optional().describe("Trending ranking window (default: 5m). Only applies with trending=true. Sent to the API as trendingDuration."),
+      timeframe: z.enum(["5m", "1h", "6h", "24h"]).optional().describe("Trending ranking window (default: 5m). Only applies with trending=true. Sent to the API as trendingDuration; also selects the volume window used for the feeAprEstimate response field."),
       page: z.number().int().optional().describe("Page number, 0-based (default: 0)"),
       pageSize: z.number().int().optional().describe("Results per page, max 200 (default: 50)"),
     },

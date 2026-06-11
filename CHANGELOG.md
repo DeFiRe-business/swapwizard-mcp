@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.7] - 2026-06-11
+
+### Improved
+- **`feeAprEstimate` documented** in `search_liquidity_pools` — trending results now include the per-window fee APR estimate returned by the API (annualized from the selected `timeframe` volume window), with a note that short windows extrapolate aggressively and `apy` remains the stable 24h-based metric.
+
 ## [1.8.6] - 2026-06-11
 
 ### Changed
