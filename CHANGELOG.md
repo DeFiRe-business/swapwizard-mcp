@@ -2,6 +2,14 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.8] - 2026-06-11
+
+### Added
+- **`hookless` parameter** in `search_liquidity_pools` — pass `hookless: true` to exclude pools with a custom hook contract (Uniswap V4 / PancakeSwap Infinity).
+
+### Improved
+- **`search_liquidity_pools` response documentation** — the tool description now lists the new API response fields: `underlyingTokens` (token addresses), `apyBase` (fee-only APY excluding reward emissions), and `hooksAddress` (custom hook contract; null when hookless).
+
 ## [1.8.7] - 2026-06-11
 
 ### Improved

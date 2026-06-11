@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.8.7",
+  version: "1.8.8",
   description: "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions including concentrated liquidity (Uniswap V3/V4, Aerodrome Slipstream, Algebra, PancakeSwap Infinity CL) with custom price-range management, routing across 22 AMMs, and pool discovery and analysis on 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -205,7 +205,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal, optionally with \`timeframe\` ("5m", "1h", "6h", "24h") to select the trending ranking window — default is 5m. Trending results include \`feeAprEstimate\`: fee APR (%) annualized from the selected timeframe's volume window over the pool reserve (null outside trending mode or when the fee tier is unknown). NOTE: \`feeAprEstimate\` extrapolates a short window to a year — for short timeframes on hot pools it can be extreme and short-lived; the \`apy\` field is the stable 24h-based metric. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, underlyingTokens (token addresses), fee tier, protocol, dexKind, APY, apyBase (fee-only APY excluding reward emissions), TVL (USD), 24h/7d volume (USD), stablecoin flags, and hooksAddress (custom hook contract for Uniswap V4 / PancakeSwap Infinity pools; null when the pool has no hook — hooks can add custom fees or transfer restrictions). KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal, optionally with \`timeframe\` ("5m", "1h", "6h", "24h") to select the trending ranking window — default is 5m. Trending results include \`feeAprEstimate\`: fee APR (%) annualized from the selected timeframe's volume window over the pool reserve (null outside trending mode or when the fee tier is unknown). NOTE: \`feeAprEstimate\` extrapolates a short window to a year — for short timeframes on hot pools it can be extreme and short-lived; the \`apy\` field is the stable 24h-based metric. Use \`hookless: true\` to exclude pools with a custom hook contract. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),
@@ -213,6 +213,7 @@ function createServer(apiKey: string): McpServer {
       tokens: z.string().optional().describe("Comma-separated token addresses to filter pools by"),
       search: z.string().optional().describe("Search by symbol or project name"),
       poolType: z.enum(["classic", "concentrated"]).optional().describe("Filter by pool type"),
+      hookless: z.boolean().optional().describe("If true, exclude pools with a custom hook contract (Uniswap V4 / PancakeSwap Infinity). Hooks can add custom fees or transfer restrictions."),
       stableOnly: z.boolean().optional().describe("Show only stablecoin pairs"),
       semiStableOnly: z.boolean().optional().describe("Show only pools with exactly one stablecoin"),
       sortBy: z.enum(["apy", "tvl", "volume1d", "volume7d"]).optional().describe("Sort field (default: tvl)"),
@@ -223,13 +224,14 @@ function createServer(apiKey: string): McpServer {
       page: z.number().int().optional().describe("Page number, 0-based (default: 0)"),
       pageSize: z.number().int().optional().describe("Results per page, max 200 (default: 50)"),
     },
-    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, trending, timeframe, page, pageSize }) => {
+    async ({ chainId, project, dexKind, tokens, search, poolType, hookless, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, trending, timeframe, page, pageSize }) => {
       const params: Record<string, string> = { chainId: String(chainId) };
       if (project) params.project = project;
       if (dexKind) params.dexKind = dexKind;
       if (tokens) params.tokens = tokens;
       if (search) params.search = search;
       if (poolType) params.poolType = poolType;
+      if (hookless) params.hookless = "true";
       if (stableOnly) params.stableOnly = "true";
       if (semiStableOnly) params.semiStableOnly = "true";
       if (trending) params.trending = "true";
