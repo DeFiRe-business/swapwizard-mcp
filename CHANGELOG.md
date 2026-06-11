@@ -2,6 +2,11 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.6] - 2026-06-11
+
+### Changed
+- No functional changes — first release published end-to-end (npm + MCP Registry) by the GitHub Actions OIDC pipeline, with npm Trusted Publishing and no stored credentials.
+
 ## [1.8.5] - 2026-06-11
 
 ### Improved
