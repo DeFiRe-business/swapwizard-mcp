@@ -2,6 +2,12 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.5] - 2026-06-11
+
+### Improved
+- **Concentrated liquidity made explicit** — server/npm/registry descriptions now state CL support (Uniswap V3/V4, Aerodrome Slipstream, Algebra forks, PancakeSwap Infinity CL, Fluid, Balancer V3) with custom price-range management. `zap_into_lp_position` description leads with the full CL protocol list and the `tickLower`/`tickUpper` range parameters.
+- **README: "Concentrated Liquidity Support" section** — CL capabilities (custom ranges, position monitoring, clean quotes, rebalancing) plus the live protocol × chain matrix (22 protocols, 13 CL, across 5 EVM chains).
+
 ## [1.8.4] - 2026-06-11
 
 ### Added

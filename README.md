@@ -87,6 +87,43 @@ claude mcp add swapwizard -e SWAPWIZARD_API_KEY=your-api-key -- npx -y @swapwiza
 
 All quote tools (`get_swap_quote`, `get_clean_quote`, `zap_into_lp_position`, `zap_out_of_lp_position`) accept an optional `affiliateCode` — an affiliate wallet address registered on-chain with SwapWizard, forwarded to the API so the affiliate fee is paid to that address.
 
+## Concentrated Liquidity Support
+
+SwapWizard is not limited to classic V2-style LPs — 13 of the 22 integrated protocols are concentrated-liquidity (CL) AMMs, with full range management:
+
+- **Custom price ranges** — `zap_into_lp_position` accepts `tickLower` / `tickUpper` to mint a CL position in any range (omit for the protocol default). Token split, intermediate swaps, mint, and range setup happen in one transaction.
+- **Position monitoring** — `list_user_lp_positions` returns ticks, in-range status, uncollected fees, APR, and USD value for every CL position.
+- **Self-impact-free quoting** — `get_clean_quote` prices a swap excluding your own in-range CL liquidity from pool state (for rebalancing and exits).
+- **Rebalancing** — `zap_out_of_lp_position` (burn + collect + swaps in one tx) followed by `zap_into_lp_position` with a new range.
+
+### Protocols by chain
+
+| Protocol | Type | Ethereum | BSC | Polygon | Base | Arbitrum |
+|---|---|:-:|:-:|:-:|:-:|:-:|
+| Uniswap V3 | CL | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Uniswap V4 | CL | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SushiSwap V3 | CL | ✓ | ✓ | ✓ | ✓ | ✓ |
+| PancakeSwap V3 | CL | ✓ | ✓ | — | ✓ | ✓ |
+| PancakeSwap Infinity CL | CL | — | ✓ | — | ✓ | — |
+| Aerodrome Slipstream (+ V2) | CL | — | — | — | ✓ | — |
+| Camelot (Algebra) | CL | — | — | — | — | ✓ |
+| THENA Fusion (Algebra) | CL | — | ✓ | — | — | — |
+| QuickSwap V3 (Algebra) | CL | — | — | ✓ | — | — |
+| Retro | CL | — | — | ✓ | — | — |
+| Fluid DEX | CL | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Balancer V3 | CL | ✓ | — | — | ✓ | ✓ |
+| Uniswap V2 | Classic | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SushiSwap V2 | Classic | ✓ | ✓ | ✓ | ✓ | ✓ |
+| PancakeSwap V2 | Classic | — | ✓ | — | ✓ | — |
+| PancakeSwap Infinity Bin | Classic | — | ✓ | — | ✓ | — |
+| QuickSwap V2 | Classic | — | — | ✓ | — | — |
+| Aerodrome Classic | Classic | — | — | — | ✓ | — |
+| THENA Classic | Classic | — | ✓ | — | — | — |
+| Curve | Classic | ✓ | — | ✓ | — | ✓ |
+| Balancer V2 | Classic | ✓ | — | ✓ | ✓ | ✓ |
+
+A built-in Split Router additionally splits orders across multiple DEXes on all 5 chains. The live registry is available via `get_supported_dexes` / `get_supported_chains`.
+
 ## Execution Model
 
 Tools that return `router`, `callData`, `value` are executed by the user:

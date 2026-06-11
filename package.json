@@ -1,7 +1,7 @@
 {
   "name": "@swapwizard/mcp-server",
-  "version": "1.8.4",
-  "description": "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions, routing across AMMs, and pool discovery and analysis on 5 EVM chains.",
+  "version": "1.8.5",
+  "description": "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions including concentrated liquidity (Uniswap V3/V4, Aerodrome Slipstream, Algebra, PancakeSwap Infinity CL) with custom price-range management, routing across 22 AMMs, and pool discovery and analysis on 5 EVM chains.",
   "mcpName": "io.github.DeFiRe-business/swapwizard-mcp",
   "type": "module",
   "bin": {
