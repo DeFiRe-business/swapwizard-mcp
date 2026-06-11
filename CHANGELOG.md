@@ -2,6 +2,14 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.4] - 2026-06-11
+
+### Added
+- **`timeframe` parameter** in `search_liquidity_pools` — selects the trending ranking window (`5m`, `1h`, `6h`, `24h`) when `trending: true`. Optional; defaults to the API's window (5m). Sent to the API as `trendingDuration`.
+
+### Improved
+- **Affiliate documentation** — the four quote tools (`get_swap_quote`, `get_clean_quote`, `zap_into_lp_position`, `zap_out_of_lp_position`) now document the optional `affiliateCode` parameter (affiliate wallet address registered on-chain, forwarded to the API so the fee is paid to that address) in both the tool descriptions and the parameter docs.
+
 ## [1.8.1] - 2026-06-09
 
 ### Improved

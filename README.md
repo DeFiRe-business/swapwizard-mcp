@@ -78,12 +78,14 @@ claude mcp add swapwizard -e SWAPWIZARD_API_KEY=your-api-key -- npx -y @swapwiza
 | `get_supported_chains` | List supported EVM chains with IDs, gas tokens, DEX list, and position config |
 | `get_supported_dexes` | AMMs/DEX sources SwapWizard routes across per chain |
 | `check_api_health` | API availability check |
-| `search_liquidity_pools` | Discover pools by chain, tokens, type. Returns poolId, symbol, fee tier, protocol, APY, TVL, 24h volume |
+| `search_liquidity_pools` | Discover pools by chain, tokens, type, or GeckoTerminal trending (`trending: true` + optional `timeframe`: 5m/1h/6h/24h, default 5m). Returns poolId, symbol, fee tier, protocol, APY, TVL, 24h volume |
 | `list_user_lp_positions` | Full LP position details: value, fees, APR, in-range status, impermanent loss |
 | `get_swap_quote` | Best swap route across all DEXes. Returns router + callData + value ready to sign |
 | `get_clean_quote` | Swap quote excluding the caller's own LP position from pool state (for rebalancing) |
 | `zap_into_lp_position` | Single-tx entry into any LP position from any token |
 | `zap_out_of_lp_position` | Single-tx exit from any LP position into any token. Pass `sender` to auto-detect nftManager |
+
+All quote tools (`get_swap_quote`, `get_clean_quote`, `zap_into_lp_position`, `zap_out_of_lp_position`) accept an optional `affiliateCode` — an affiliate wallet address registered on-chain with SwapWizard, forwarded to the API so the affiliate fee is paid to that address.
 
 ## Execution Model
 

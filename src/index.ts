@@ -81,7 +81,7 @@ async function safeApiCall(fn: () => Promise<unknown>) {
 
 const SERVER_META = {
   name: "swapwizard",
-  version: "1.8.3",
+  version: "1.8.4",
   description: "Non-custodial DeFi execution layer for AI agents powered by the SwapWizard API — swap quotes and execution, zap in/out of LP positions, routing across AMMs, and pool discovery and analysis on 5 EVM chains.",
   websiteUrl: "https://swapwizard.xyz",
 };
@@ -205,7 +205,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "search_liquidity_pools",
-    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
+    `Maps to GET /pools. Discovers liquidity pools across supported AMMs and chains, returning id, poolId, symbol, fee tier, protocol, dexKind, APY, TVL (USD), 24h/7d volume (USD), and stablecoin flags. KEY PARAMETERS: Use \`trending: true\` to get only pools currently trending on GeckoTerminal, optionally with \`timeframe\` ("5m", "1h", "6h", "24h") to select the trending ranking window — default is 5m. Use \`sortBy\` ("apy", "tvl", "volume1d", "volume7d") with \`sortOrder\` ("asc", "desc") to control ranking — default is tvl desc. Use \`topPerVenue\` to limit to top N pools per DEX by APY. Supports filtering by protocol/DEX, tokens, pool type, stablecoin status, and free-text search, with pagination. Required upstream step before zap_into_lp_position. IMPORTANT: The response contains two ID fields — \`poolId\` (string) must be passed AS-IS to zap_into_lp_position and zap_out_of_lp_position (do NOT construct or modify it), and \`id\` (number) is used only for analyze_pool.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC, 1 for Ethereum)"),
       project: z.string().optional().describe("Filter by protocol/DEX name (e.g. uniswap-v3, pancakeswap-v3, aerodrome-v2)"),
@@ -219,10 +219,11 @@ function createServer(apiKey: string): McpServer {
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort direction (default: desc)"),
       topPerVenue: z.number().int().optional().describe("Limit to top N pools per venue by APY"),
       trending: z.boolean().optional().describe("If true, return only pools currently trending on GeckoTerminal"),
+      timeframe: z.enum(["5m", "1h", "6h", "24h"]).optional().describe("Trending ranking window (default: 5m). Only applies with trending=true. Sent to the API as trendingDuration."),
       page: z.number().int().optional().describe("Page number, 0-based (default: 0)"),
       pageSize: z.number().int().optional().describe("Results per page, max 200 (default: 50)"),
     },
-    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, trending, page, pageSize }) => {
+    async ({ chainId, project, dexKind, tokens, search, poolType, stableOnly, semiStableOnly, sortBy, sortOrder, topPerVenue, trending, timeframe, page, pageSize }) => {
       const params: Record<string, string> = { chainId: String(chainId) };
       if (project) params.project = project;
       if (dexKind) params.dexKind = dexKind;
@@ -232,6 +233,7 @@ function createServer(apiKey: string): McpServer {
       if (stableOnly) params.stableOnly = "true";
       if (semiStableOnly) params.semiStableOnly = "true";
       if (trending) params.trending = "true";
+      if (trending && timeframe) params.trendingDuration = timeframe;
       if (sortBy) params.sortBy = sortBy;
       if (sortOrder) params.sortOrder = sortOrder;
       if (topPerVenue !== undefined) params.topPerVenue = String(topPerVenue);
@@ -271,7 +273,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "get_swap_quote",
-    `Maps to POST /quote. Returns the best swap quote across all integrated DEX protocols, with router, callData, value, price impact, route summary, and gas estimate in one response. Surplus and positive slippage are returned to the user in the same transaction. Supports an excludePositions parameter that prices the swap excluding the caller's own LP position from pool state. Returns signable data only; never signs or broadcasts. EXECUTION FLOW: (1) If the input token is non-native, send an ERC-20 approve to the router and WAIT for on-chain confirmation. (2) Call this tool again for a fresh quote (quotes expire). (3) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. High price impact means the user will receive significantly less value than expected. ⚠️ ZERO OUTPUT: If the swap amount is too small relative to the token pair price ratio, the API returns HTTP 400 with "swap amount too small: output rounds to zero for this pair". Increase the amount or use a different pair.`,
+    `Maps to POST /quote. Returns the best swap quote across all integrated DEX protocols, with router, callData, value, price impact, route summary, and gas estimate in one response. Surplus and positive slippage are returned to the user in the same transaction. Supports an optional affiliateCode (registered affiliate wallet address) forwarded to the API so the affiliate fee is paid on-chain to that address. Supports an excludePositions parameter that prices the swap excluding the caller's own LP position from pool state. Returns signable data only; never signs or broadcasts. EXECUTION FLOW: (1) If the input token is non-native, send an ERC-20 approve to the router and WAIT for on-chain confirmation. (2) Call this tool again for a fresh quote (quotes expire). (3) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. High price impact means the user will receive significantly less value than expected. ⚠️ ZERO OUTPUT: If the swap amount is too small relative to the token pair price ratio, the API returns HTTP 400 with "swap amount too small: output rounds to zero for this pair". Increase the amount or use a different pair.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC)"),
       tokenIn: z.string().describe("Input token address (0x0000...0000 for native coin)"),
@@ -279,7 +281,7 @@ function createServer(apiKey: string): McpServer {
       side: z.enum(["exactIn", "exactOut"]).describe("Quote direction"),
       amount: z.string().describe("Amount as stringified uint256 in token decimals"),
       slippageBps: z.number().int().min(0).max(10000).optional().describe("Slippage tolerance in basis points (default: 100 = 1%)"),
-      affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
+      affiliateCode: z.string().optional().describe("Optional affiliate wallet address registered on-chain with SwapWizard — forwarded to the API so the affiliate fee for this operation is paid to that address. Omit if you have no affiliate."),
       excludePositions: z.array(z.object({
         poolAddress: z.string().describe("Pool contract address"),
         liquidity: z.string().describe("Position liquidity as uint256 string"),
@@ -292,7 +294,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "get_clean_quote",
-    `Maps to POST /quote with excludePositions=true. Shortcut to get_swap_quote that prices the swap as if the caller's own LP position were not in the pool, for concentrated-liquidity positions in the active tick range. Use when an agent holds a significant position in the pool it is about to trade against (rebalancing, exit, treasury sizing) and needs a quote unaffected by its own liquidity. Returns the same router/callData/value execution fields as get_swap_quote. EXECUTION FLOW: same as get_swap_quote — approve (wait for confirmation), fresh quote, then send tx to the router contract (requires private key or wallet signer). ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. ⚠️ ZERO OUTPUT: If the swap amount is too small relative to the token pair price ratio, the API returns HTTP 400 with "swap amount too small: output rounds to zero for this pair". Increase the amount or use a different pair.`,
+    `Maps to POST /quote with excludePositions=true. Shortcut to get_swap_quote that prices the swap as if the caller's own LP position were not in the pool, for concentrated-liquidity positions in the active tick range. Use when an agent holds a significant position in the pool it is about to trade against (rebalancing, exit, treasury sizing) and needs a quote unaffected by its own liquidity. Returns the same router/callData/value execution fields as get_swap_quote, and likewise supports an optional affiliateCode (registered affiliate wallet address) forwarded to the API. EXECUTION FLOW: same as get_swap_quote — approve (wait for confirmation), fresh quote, then send tx to the router contract (requires private key or wallet signer). ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. ⚠️ ZERO OUTPUT: If the swap amount is too small relative to the token pair price ratio, the API returns HTTP 400 with "swap amount too small: output rounds to zero for this pair". Increase the amount or use a different pair.`,
     {
       chainId: z.number().int().describe("EVM chain ID (e.g. 56 for BSC)"),
       owner: z.string().describe("Wallet address whose LP positions will be excluded from pool state during quoting"),
@@ -301,7 +303,7 @@ function createServer(apiKey: string): McpServer {
       side: z.enum(["exactIn", "exactOut"]).describe("Quote direction"),
       amount: z.string().describe("Amount as stringified uint256 in token decimals"),
       slippageBps: z.number().int().min(0).max(10000).optional().describe("Slippage tolerance in basis points (default: 100 = 1%)"),
-      affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
+      affiliateCode: z.string().optional().describe("Optional affiliate wallet address registered on-chain with SwapWizard — forwarded to the API so the affiliate fee for this operation is paid to that address. Omit if you have no affiliate."),
       rpcUrl: z.string().optional().describe("Custom RPC endpoint URL for position discovery."),
     },
     async ({ chainId, owner, tokenIn, tokenOut, side, amount, slippageBps, affiliateCode, rpcUrl }) => guidedApiCall(async () => {
@@ -345,7 +347,7 @@ function createServer(apiKey: string): McpServer {
 
   server.tool(
     "zap_into_lp_position",
-    `Maps to POST /addliquidity/quote. Builds a single-transaction zap to enter an LP position from ANY input token — the deposit token does NOT have to be one of the pool's underlying tokens. SwapWizard handles all intermediate swaps, the LP mint, and price-range setup in a single transaction. Supports Uniswap V3/V4, Curve, Balancer, Aerodrome. Surplus returned to the user. IMPORTANT: The poolId parameter MUST come verbatim from the poolId field in the search_liquidity_pools response — do NOT construct or modify it. EXECUTION FLOW: (1) If the deposit token is non-native, send an ERC-20 approve to the router and WAIT for on-chain confirmation. (2) Call this tool again for a fresh quote (quotes expire). (3) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. ⚠️ ZERO OUTPUT: If an internal swap amount is too small, the API returns HTTP 400 with "swap amount too small: output rounds to zero". Increase the deposit amount.`,
+    `Maps to POST /addliquidity/quote. Builds a single-transaction zap to enter an LP position from ANY input token — the deposit token does NOT have to be one of the pool's underlying tokens. SwapWizard handles all intermediate swaps, the LP mint, and price-range setup in a single transaction. Supports Uniswap V3/V4, Curve, Balancer, Aerodrome. Surplus returned to the user. Supports an optional affiliateCode (registered affiliate wallet address) forwarded to the API so the affiliate fee is paid on-chain to that address. IMPORTANT: The poolId parameter MUST come verbatim from the poolId field in the search_liquidity_pools response — do NOT construct or modify it. EXECUTION FLOW: (1) If the deposit token is non-native, send an ERC-20 approve to the router and WAIT for on-chain confirmation. (2) Call this tool again for a fresh quote (quotes expire). (3) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing. ⚠️ ZERO OUTPUT: If an internal swap amount is too small, the API returns HTTP 400 with "swap amount too small: output rounds to zero". Increase the deposit amount.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       poolId: z.string().describe("Pool identifier from search_liquidity_pools (e.g. 'pancakeswap-v3:0x36696...')"),
@@ -356,14 +358,14 @@ function createServer(apiKey: string): McpServer {
       sender: z.string().optional().describe("Wallet address of the sender (for simulation)"),
       tickLower: z.number().int().optional().describe("Custom lower tick for concentrated liquidity"),
       tickUpper: z.number().int().optional().describe("Custom upper tick for concentrated liquidity"),
-      affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
+      affiliateCode: z.string().optional().describe("Optional affiliate wallet address registered on-chain with SwapWizard — forwarded to the API so the affiliate fee for this operation is paid to that address. Omit if you have no affiliate."),
     },
     async (params) => guidedApiCall(() => apiPost("/addliquidity/quote", params)),
   );
 
   server.tool(
     "zap_out_of_lp_position",
-    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into ANY output token — you can withdraw into any token, not just the pool's underlying tokens. SwapWizard handles LP burn, fee collection, and intermediate swaps in a single transaction. REQUIRED WORKFLOW: First call list_user_lp_positions, then pass the returned fields (positionId, nftManager, dexName, liquidityKind) here along with sender, poolId, and withdrawals. EXECUTION FLOW: (1) APPROVE — For NFT-based positions, call setApprovalForAll(router, true) on the nftManager contract (do NOT use approve(router, tokenId)). For PCS Infinity BIN, call approveForAll(router, true). For classic LP pools (Curve, Balancer, Uniswap V2, Solidly), approve the LP token as a standard ERC-20. (2) WAIT for the approve tx to be confirmed on-chain. (3) Call this tool again for a fresh quote (quotes expire). (4) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing.`,
+    `Maps to POST /removeliquidity/quote. Builds a single-transaction zap to exit an LP position into ANY output token — you can withdraw into any token, not just the pool's underlying tokens. SwapWizard handles LP burn, fee collection, and intermediate swaps in a single transaction. Supports an optional affiliateCode (registered affiliate wallet address) forwarded to the API so the affiliate fee is paid on-chain to that address. REQUIRED WORKFLOW: First call list_user_lp_positions, then pass the returned fields (positionId, nftManager, dexName, liquidityKind) here along with sender, poolId, and withdrawals. EXECUTION FLOW: (1) APPROVE — For NFT-based positions, call setApprovalForAll(router, true) on the nftManager contract (do NOT use approve(router, tokenId)). For PCS Infinity BIN, call approveForAll(router, true). For classic LP pools (Curve, Balancer, Uniswap V2, Solidly), approve the LP token as a standard ERC-20. (2) WAIT for the approve tx to be confirmed on-chain. (3) Call this tool again for a fresh quote (quotes expire). (4) Send the tx to the router contract: to=router, data=callData, value=value. This requires a private key or wallet signer. ⚠️ PRICE IMPACT: The response includes a priceImpact field. Agents MUST present this value to the user and request explicit confirmation before executing.`,
     {
       chainId: z.number().int().describe("EVM chain ID"),
       positionId: z.string().describe("Position identifier from list_user_lp_positions. For CL positions: NFT token ID. For classic pools: LP token contract address."),
@@ -376,7 +378,7 @@ function createServer(apiKey: string): McpServer {
       })).min(1).describe("Tokens to receive after removal"),
       sender: z.string().describe("Wallet address of the position owner."),
       percent: z.number().int().min(1).max(100).optional().describe("Percentage of position to remove (default: 100). For classic LP pools (UniV2, Solidly, Curve, Balancer) use 99 instead of 100 to avoid reverts from LP balance race conditions between RPC nodes."),
-      affiliateCode: z.string().optional().describe("Registered affiliate wallet address"),
+      affiliateCode: z.string().optional().describe("Optional affiliate wallet address registered on-chain with SwapWizard — forwarded to the API so the affiliate fee for this operation is paid to that address. Omit if you have no affiliate."),
     },
     async ({ chainId, positionId, poolId, nftManager, dexName, liquidityKind, withdrawals, sender, percent, affiliateCode }) => guidedApiCall(async () => {
       if (!nftManager && dexName) {
