@@ -2,6 +2,16 @@
 
 All notable changes to `@swapwizard/mcp-server` are documented here.
 
+## [1.8.9] - 2026-06-13
+
+### Added
+- **Momentum signals** in `search_liquidity_pools` — trending results now carry `momentumSignal` (entry/watch/exit), `momentumScore`, `momentumRatioH1/H6/H24`, `momentumTakersH6`, `lpMintsH6/lpBurnsH6`, and `lpNetFlowH6` (LP inflow/outflow/flat). New `signal` parameter filters by momentum signal (comma-separated, e.g. `entry,watch`) and `sortBy: "signal"` groups by entry→watch→exit then APR.
+- **`suggestedRangePct`** on trending results — a suggested concentrated-liquidity range (± percent) balancing fee density vs time-in-range; pass it to `zap_into_lp_position`.
+- **Exit signal on `list_user_lp_positions`** — each position carries `momentumSignal` for its pool to drive exit decisions ("exit"/absent = momentum exhausted).
+
+### Improved
+- **Setup guide** — added Momentum entry and Momentum exit operational flows.
+
 ## [1.8.8] - 2026-06-11
 
 ### Added
